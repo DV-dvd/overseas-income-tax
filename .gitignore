@@ -1,0 +1,11 @@
+# OMC / Claude 运行时状态，不提交
+.omc/
+.claude/
+.venv/
+__pycache__/
+*.pyc
+
+# 用户敏感数据（本仓库只含 SKILL 本身）
+*.pdf
+*.xlsx
+*.xls
