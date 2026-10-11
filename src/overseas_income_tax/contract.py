@@ -6,7 +6,7 @@ from typing import Any
 
 
 API_VERSION = "v1"
-CONTRACT_VERSION = "1.0.0"
+CONTRACT_VERSION = "1.1.0"
 
 
 def capabilities() -> dict[str, Any]:
@@ -36,6 +36,12 @@ def capabilities() -> dict[str, Any]:
             "network_required_for_calculation": False,
             "persistent_storage": False,
             "default_bind": "127.0.0.1",
+        },
+        "recognition": {
+            "mode": "rule_first",
+            "supported_templates": ["irs_1042_s"],
+            "candidate_values_require_human_confirmation": True,
+            "unsupported_templates": "materials_only",
         },
         "scope": {
             "automatic_calculation": ["verified_interest", "verified_ordinary_cash_dividend"],

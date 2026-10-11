@@ -45,20 +45,52 @@ def validate(request: CalculationRequest) -> IntegrityResult:
             by_amendment[event.amendment_key].append(event)
 
     superseded_ids: set[str] = set()
+    conflicted_ids: set[str] = set()
     for key, versions in by_amendment.items():
         confirmed = [event for event in versions if event.review_status is ReviewStatus.CONFIRMED]
         if len(confirmed) > 1:
             highest = max(event.revision for event in confirmed)
             winners = [event for event in confirmed if event.revision == highest]
             if len(winners) != 1:
-                pending.append(PendingItem("amendment_conflict", f"修订组 {key} 存在并列有效版本。"))
+                signatures = {
+                    (
+                        event.category,
+                        event.country_or_region,
+                        event.currency,
+                        event.foreign_tax_currency,
+                        event.gross_amount,
+                        event.foreign_tax_reported,
+                        event.foreign_tax_eligible,
+                        event.occurred_on,
+                    )
+                    for event in winners
+                }
+                if len(signatures) == 1:
+                    retained = min(winners, key=lambda event: event.id)
+                    superseded_ids.update(event.id for event in confirmed if event is not retained)
+                    pending.append(
+                        PendingItem(
+                            "duplicate_form_copy_collapsed",
+                            f"修订组 {key} 的同版本副本字段一致，仅保留 {retained.id} 计税。",
+                            retained.id,
+                            blocking=False,
+                        )
+                    )
+                else:
+                    conflicted_ids.update(event.id for event in confirmed)
+                    pending.append(
+                        PendingItem(
+                            "amendment_conflict",
+                            f"修订组 {key} 存在并列有效版本且字段冲突，整组未进入计税。",
+                        )
+                    )
                 continue
             superseded_ids.update(event.id for event in confirmed if event is not winners[0])
 
     active: list[EconomicEvent] = []
     seen_exact_events: dict[tuple[object, ...], str] = {}
     for event in request.events:
-        if event.id in superseded_ids or event.review_status is ReviewStatus.REJECTED:
+        if event.id in superseded_ids or event.id in conflicted_ids or event.review_status is ReviewStatus.REJECTED:
             continue
         missing_evidence = [evidence_id for evidence_id in event.evidence_ids if evidence_id not in observations]
         if missing_evidence:

@@ -19,6 +19,11 @@
       "type": "array",
       "items": { "$ref": "#/$defs/exchangeRate" }
     },
+    "audit_reviews": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/auditReview" },
+      "default": []
+    },
     "rule_snapshot": {
       "description": "Reserved output metadata. Client input is ignored so callers cannot override tax rules."
     }
@@ -135,6 +140,16 @@
         "rule_code": { "type": "string", "minLength": 1 }
       },
       "additionalProperties": true
+    },
+    "auditReview": {
+      "type": "object",
+      "required": ["event_id", "status"],
+      "properties": {
+        "event_id": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["consistent", "inconsistent"] },
+        "note": { "type": "string" }
+      },
+      "additionalProperties": false
     }
   }
 }

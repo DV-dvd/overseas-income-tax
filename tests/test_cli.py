@@ -65,3 +65,19 @@ def test_invalid_input_returns_structured_error():
     )
     assert exit_code == 2
     assert "布尔值" in json.loads(errors.getvalue())["error"]
+
+
+def test_audit_review_must_reference_an_event_and_explain_mismatch():
+    payload = json.loads(payload_text())
+    payload["audit_reviews"] = [
+        {"event_id": "missing", "status": "inconsistent", "note": ""}
+    ]
+    errors = StringIO()
+    exit_code = run(
+        ["calculate"],
+        stdin=StringIO(json.dumps(payload)),
+        stdout=StringIO(),
+        stderr=errors,
+    )
+    assert exit_code == 2
+    assert "引用当前请求" in json.loads(errors.getvalue())["error"]

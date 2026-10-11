@@ -6,6 +6,8 @@ from decimal import Decimal
 
 from overseas_income_tax.engine import calculate
 from overseas_income_tax.models import (
+    AuditReview,
+    AuditStatus,
     CalculationRequest,
     EconomicEvent,
     EvidenceLocation,
@@ -116,6 +118,30 @@ def test_amended_event_supersedes_original_with_same_amendment_key():
     assert result.taxable_income_cny == Decimal("8400.00")
 
 
+def test_same_revision_form_copies_with_identical_fields_are_counted_once():
+    copy_b = event("copy-b", amendment_key="form-copy", revision=0)
+    copy_c = event("copy-c", amendment_key="form-copy", revision=0)
+    result = calculate(request(copy_b, copy_c))
+    assert result.taxable_income_cny == Decimal("7000.00")
+    assert len(result.included_event_ids) == 1
+    assert any(item.code == "duplicate_form_copy_collapsed" for item in result.pending_items)
+
+
+def test_conflicting_same_revision_forms_are_all_excluded():
+    first = event("first", amendment_key="form-conflict", revision=1)
+    second = event(
+        "second",
+        amendment_key="form-conflict",
+        revision=1,
+        gross_amount=Decimal("1200"),
+    )
+    result = calculate(request(first, second))
+    assert result.status is ResultStatus.MATERIALS_ONLY
+    assert result.taxable_income_cny == Decimal("0.00")
+    assert result.included_event_ids == ()
+    assert any(item.code == "amendment_conflict" and item.blocking for item in result.pending_items)
+
+
 def test_summary_row_is_a_blocking_integrity_issue():
     item = event("summary")
     result = calculate(request(item, observations=[observation("summary", summary=True)]))
@@ -152,3 +178,30 @@ def test_duplicate_currency_rates_are_ambiguous_and_not_calculated():
     second_rate = replace(calculation_request.exchange_rates[0], source="another official record")
     result = calculate(replace(calculation_request, exchange_rates=calculation_request.exchange_rates + (second_rate,)))
     assert result.status is ResultStatus.MATERIALS_ONLY
+
+
+def test_unconfirmed_candidate_never_enters_calculation():
+    candidate = event("candidate", review_status=ReviewStatus.CANDIDATE)
+    result = calculate(request(candidate))
+    assert result.status is ResultStatus.MATERIALS_ONLY
+    assert result.included_event_ids == ()
+    assert any(item.event_id == "candidate" and "尚未确认" in item.message for item in result.pending_items)
+
+
+def test_audit_record_does_not_change_financial_fingerprint():
+    calculation_request = request(event("one"))
+    before = calculate(calculation_request)
+    reviewed = replace(
+        calculation_request,
+        audit_reviews=(AuditReview("one", AuditStatus.CONSISTENT),),
+    )
+    after = calculate(reviewed)
+    assert after.fingerprint == before.fingerprint
+    assert after.range_supplemental_tax_cny == before.range_supplemental_tax_cny
+
+
+def test_result_contains_reproducible_event_and_summary_derivations():
+    result = calculate(request(event("one")))
+    assert result.event_derivations[0].formula == "1000 USD × 7 CNY/USD = 7000.00 CNY"
+    assert result.event_derivations[0].file_name == "one.pdf"
+    assert result.summary_derivations[-1].result_cny == Decimal("700.00")

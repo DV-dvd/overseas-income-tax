@@ -11,6 +11,7 @@ from .engine import calculate
 from .exporter import build_xlsx
 from .extraction import extract_pdf_bytes
 from .models import to_primitive
+from .recognition import recognize_document
 
 
 def create_app() -> Flask:
@@ -61,6 +62,7 @@ def create_app() -> Flask:
             document = extract_pdf_bytes(uploaded.filename, uploaded.read())
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+        recognition = recognize_document(document)
         return jsonify({
             "file_name": document.file_name,
             "sha256": document.sha256,
@@ -68,7 +70,8 @@ def create_app() -> Flask:
                 {"page": index, "text": text[:8000]}
                 for index, text in enumerate(document.pages, start=1)
             ],
-            "notice": "仅提取文本并返回浏览器；服务端不建立持久存储。请人工确认后再形成经济事项。",
+            "recognition": to_primitive(recognition),
+            "notice": "规则识别只产生待确认候选值；服务端不建立持久存储，未经人工确认的事项不参与计税。",
         })
 
     @app.post("/api/v1/calculate")

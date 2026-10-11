@@ -23,6 +23,7 @@ def test_agent_can_discover_capabilities_and_request_schema():
     assert capability_response.status_code == 200
     assert capability_response.json["agent_vendor_neutral"] is True
     assert capability_response.json["interfaces"]["http"]["calculate"] == "/api/v1/calculate"
+    assert capability_response.json["recognition"]["supported_templates"] == ["irs_1042_s"]
     assert schema_response.status_code == 200
     assert schema_response.json["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert set(schema_response.json["required"]) == {
@@ -36,6 +37,7 @@ def test_calculation_endpoint():
     response = client.post("/api/v1/calculate", json=payload)
     assert response.status_code == 200
     assert response.json["range_supplemental_tax_cny"] == "700.00"
+    assert response.json["event_derivations"][0]["formula"] == "1000 USD × 7 CNY/USD = 7000.00 CNY"
     assert response.headers["Cache-Control"] == "no-store"
 
 
@@ -93,6 +95,9 @@ def test_pdf_extraction_is_request_scoped():
     assert response.json["file_name"] == "sample.pdf"
     assert len(response.json["sha256"]) == 64
     assert response.json["pages"] == [{"page": 1, "text": ""}]
+    assert response.json["recognition"]["status"] == "needs_manual_review"
+    assert response.json["recognition"]["events"] == []
+    assert "扫描件" in response.json["recognition"]["warnings"][0]
 
 
 def test_export_endpoint_returns_same_result_workbook():
@@ -101,7 +106,7 @@ def test_export_endpoint_returns_same_result_workbook():
     response = client.post("/api/v1/export.xlsx", json=payload)
     assert response.status_code == 200
     workbook = load_workbook(BytesIO(response.data), data_only=True)
-    assert workbook.sheetnames == ["范围内测算", "已核验经济事项", "分国抵免账", "待核验与规则"]
+    assert workbook.sheetnames == ["范围内测算", "已核验经济事项", "分国抵免账", "计算推导", "待核验与规则"]
 
 
 def test_legacy_endpoint_remains_a_compatible_alias():

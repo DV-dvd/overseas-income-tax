@@ -40,6 +40,11 @@ class ResultStatus(StrEnum):
     MATERIALS_ONLY = "materials_only"
 
 
+class AuditStatus(StrEnum):
+    CONSISTENT = "consistent"
+    INCONSISTENT = "inconsistent"
+
+
 @dataclass(frozen=True)
 class EvidenceLocation:
     document_sha256: str
@@ -144,11 +149,49 @@ class CountryCreditAccount:
 
 
 @dataclass(frozen=True)
+class EventDerivation:
+    event_id: str
+    file_name: str
+    page: int
+    locator: str
+    excerpt: str
+    gross_amount: Decimal
+    currency: str
+    cny_per_unit: Decimal
+    rate_date: date
+    rate_source: str
+    gross_cny: Decimal
+    foreign_tax_reported: Decimal
+    foreign_tax_eligible: Decimal
+    foreign_tax_currency: str
+    foreign_tax_cny_per_unit: Decimal
+    foreign_tax_reported_cny: Decimal
+    foreign_tax_eligible_cny: Decimal
+    formula: str
+
+
+@dataclass(frozen=True)
+class SummaryDerivation:
+    code: str
+    label: str
+    formula: str
+    result_cny: Decimal
+
+
+@dataclass(frozen=True)
+class AuditReview:
+    event_id: str
+    status: AuditStatus
+    note: str = ""
+
+
+@dataclass(frozen=True)
 class CalculationRequest:
     questionnaire: Questionnaire
     events: tuple[EconomicEvent, ...]
     observations: tuple[RawObservation, ...]
     exchange_rates: tuple[ExchangeRateRecord, ...]
+    audit_reviews: tuple[AuditReview, ...] = field(default_factory=tuple)
     rule_snapshot: RuleSnapshot = RULE_SNAPSHOT
 
 
@@ -166,6 +209,8 @@ class CalculationResult:
     tax_before_credit_cny: Decimal
     credit_used_cny: Decimal
     range_supplemental_tax_cny: Decimal | None
+    event_derivations: tuple[EventDerivation, ...]
+    summary_derivations: tuple[SummaryDerivation, ...]
     pending_items: tuple[PendingItem, ...]
 
 

@@ -18,6 +18,8 @@ Constraints:
 - Calculation does not require network access.
 - Client-supplied rule snapshots are ignored.
 - Human confirmation is required before an event can enter calculation.
+- Rule-based candidate recognition currently supports tested IRS Form 1042-S text layouts.
+- Recognition returns field confidence and evidence locations; unsupported layouts return needs_manual_review without guessed amounts.
 - Automatic calculation scope is limited to verified interest and verified ordinary cash dividends.
 - Capital gains, complex products, uncertain residency/source, prior-year, prepayment, and correction cases require review.
 - "Unsupported" never means "not reportable".

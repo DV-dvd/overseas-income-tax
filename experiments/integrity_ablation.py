@@ -106,10 +106,32 @@ def cases() -> list[tuple[str, CalculationRequest, Decimal | None, bool]]:
         [_event("summary-event", "summary-observation")],
         [_observation("summary-observation", "summary", summary=True)],
     )
+    duplicate_form_copy = _request(
+        [
+            _event("copy-b", "copy-b-observation", amendment_key="shared-form", revision=0),
+            _event("copy-c", "copy-c-observation", amendment_key="shared-form", revision=0),
+        ],
+        [_observation("copy-b-observation", "copy-b"), _observation("copy-c-observation", "copy-c")],
+    )
+    conflicting_forms = _request(
+        [
+            _event("conflict-a", "conflict-a-observation", amendment_key="conflict-form", revision=1),
+            _event(
+                "conflict-b",
+                "conflict-b-observation",
+                amendment_key="conflict-form",
+                revision=1,
+                gross_amount=Decimal("1200"),
+            ),
+        ],
+        [_observation("conflict-a-observation", "conflict-a"), _observation("conflict-b-observation", "conflict-b")],
+    )
     return [
         ("duplicate_upload", duplicate, Decimal("7000.00"), False),
         ("amended_replaces_original", amended, Decimal("8400.00"), False),
         ("summary_not_tax_input", summary, None, True),
+        ("duplicate_form_copy", duplicate_form_copy, Decimal("7000.00"), False),
+        ("same_revision_conflict", conflicting_forms, None, True),
     ]
 
 
@@ -157,7 +179,7 @@ def run_ablation() -> dict[str, object]:
         )
     passed = with_integrity_pass == len(rows) and without_integrity_pass < with_integrity_pass
     return {
-        "dataset": "synthetic-adversarial-v1",
+        "dataset": "synthetic-adversarial-v2",
         "claim_limit": "Regression evidence only; not a real-world accuracy claim.",
         "with_integrity_passed": with_integrity_pass,
         "without_integrity_passed": without_integrity_pass,

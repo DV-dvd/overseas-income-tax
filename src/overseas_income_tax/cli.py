@@ -12,6 +12,7 @@ from .engine import calculate
 from .exporter import build_xlsx
 from .extraction import extract_pdf_bytes
 from .models import to_primitive
+from .recognition import recognize_document
 from .web import create_app
 
 
@@ -98,6 +99,7 @@ def run(
         if command == "extract":
             source = Path(args.input)
             document = extract_pdf_bytes(source.name, source.read_bytes())
+            recognition = recognize_document(document)
             _write_json(
                 {
                     "file_name": document.file_name,
@@ -106,6 +108,7 @@ def run(
                         {"page": index, "text": text}
                         for index, text in enumerate(document.pages, start=1)
                     ],
+                    "recognition": to_primitive(recognition),
                 },
                 args.output,
                 stdout,

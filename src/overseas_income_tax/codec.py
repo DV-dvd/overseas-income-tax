@@ -5,6 +5,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from .models import (
+    AuditReview,
+    AuditStatus,
     CalculationRequest,
     EconomicEvent,
     EvidenceLocation,
@@ -139,10 +141,37 @@ def request_from_dict(payload: dict[str, Any]) -> CalculationRequest:
         except (KeyError, TypeError, ValueError) as exc:
             raise InputError(f"第 {index} 条汇率记录格式无效。") from exc
 
+    audit_reviews: list[AuditReview] = []
+    for index, item in enumerate(payload.get("audit_reviews", []), start=1):
+        try:
+            audit_reviews.append(
+                AuditReview(
+                    event_id=str(item["event_id"]),
+                    status=AuditStatus(item["status"]),
+                    note=str(item.get("note", "")),
+                )
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise InputError(f"第 {index} 条抽检记录格式无效。") from exc
+
     observation_ids = [item.id for item in observations]
     event_ids = [item.id for item in events]
+    event_id_set = set(event_ids)
+    audit_event_ids = [item.event_id for item in audit_reviews]
     if len(observation_ids) != len(set(observation_ids)):
         raise InputError("原始观察值 ID 不能重复。")
     if len(event_ids) != len(set(event_ids)):
         raise InputError("经济事项 ID 不能重复。")
-    return CalculationRequest(q, tuple(events), tuple(observations), tuple(rates))
+    if len(audit_event_ids) != len(set(audit_event_ids)):
+        raise InputError("同一经济事项不能存在多条抽检记录。")
+    if any(item.event_id not in event_id_set for item in audit_reviews):
+        raise InputError("抽检记录必须引用当前请求中的经济事项。")
+    if any(item.status is AuditStatus.INCONSISTENT and not item.note.strip() for item in audit_reviews):
+        raise InputError("抽检结果不一致时必须填写备注。")
+    return CalculationRequest(
+        q,
+        tuple(events),
+        tuple(observations),
+        tuple(rates),
+        tuple(audit_reviews),
+    )

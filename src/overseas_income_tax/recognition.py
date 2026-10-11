@@ -1,0 +1,224 @@
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from decimal import Decimal, InvalidOperation
+from typing import Any
+
+from .extraction import ExtractedDocument
+from .models import EvidenceLocation
+
+
+@dataclass(frozen=True)
+class CandidateField:
+    value: Any
+    confidence: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class CandidateEvent:
+    id: str
+    category: CandidateField
+    country_or_region: CandidateField
+    currency: CandidateField
+    foreign_tax_currency: CandidateField
+    gross_amount: CandidateField
+    foreign_tax_reported: CandidateField
+    foreign_tax_eligible: CandidateField
+    occurred_on: CandidateField
+    evidence: EvidenceLocation
+    extracted_fields: dict[str, str]
+    amendment_key: str | None = None
+    revision: int = 0
+
+
+@dataclass(frozen=True)
+class DocumentRecognition:
+    document_type: CandidateField
+    tax_year: CandidateField
+    status: str
+    events: tuple[CandidateEvent, ...]
+    warnings: tuple[str, ...]
+
+
+INCOME_CODE_CATEGORIES = {
+    "01": ("interest", "1042-S income code 01 仅作为利息候选线索"),
+    "02": ("interest", "1042-S income code 02 仅作为利息候选线索"),
+    "03": ("interest", "1042-S income code 03 仅作为利息候选线索"),
+    "04": ("interest", "1042-S income code 04 仅作为利息候选线索"),
+    "06": ("dividend", "1042-S income code 06 仅作为股息候选线索"),
+}
+
+
+def _normalized(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _match(text: str, pattern: str) -> str | None:
+    found = re.search(pattern, text, flags=re.IGNORECASE)
+    return found.group(1).strip() if found else None
+
+
+def _money(value: str | None) -> Decimal | None:
+    if not value:
+        return None
+    try:
+        return Decimal(value.replace(",", "").replace("$", "").strip())
+    except InvalidOperation:
+        return None
+
+
+def _box_money(text: str, box: str, label: str) -> Decimal | None:
+    escaped_box = re.escape(box)
+    pattern = rf"(?:box\s*)?{escaped_box}\s*[-:—]?\s*{label}\s*[:$]?\s*\$?\s*([0-9][0-9,]*(?:\.\d+)?)"
+    return _money(_match(text, pattern))
+
+
+def _tax_year(text: str) -> str | None:
+    explicit = _match(
+        text,
+        r"(?:tax\s+year|calendar\s+year|for\s+the\s+year)\s*[:\-]?\s*(20[0-9]{2})",
+    )
+    if explicit:
+        return explicit
+    return _match(text, r"form\s+1042-s.{0,80}?\b(20[0-9]{2})\b")
+
+
+def _document_type(text: str) -> CandidateField:
+    lower = text.lower()
+    if "1042-s" in lower or "1042s" in lower:
+        return CandidateField("irs_1042_s", "high", "检测到 Form 1042-S 标识")
+    if "brokerage" in lower or "broker statement" in lower or "券商" in text:
+        return CandidateField("broker_statement", "medium", "检测到券商报表关键词；该版式尚未验证")
+    if "bank statement" in lower or "银行月结单" in text or "银行对账单" in text:
+        return CandidateField("bank_statement", "medium", "检测到银行报表关键词；该版式尚未验证")
+    return CandidateField("unknown", "low", "未识别到已支持的材料模板")
+
+
+def _recognize_1042_s_page(
+    document: ExtractedDocument,
+    page_number: int,
+    text: str,
+) -> tuple[CandidateEvent | None, list[str]]:
+    warnings: list[str] = []
+    income_code = _match(text, r"(?:box\s*)?1\s*[-:—]?\s*income\s+code\s*[:\-]?\s*([0-9]{2})")
+    gross = _box_money(text, "2", r"gross\s+income")
+    box_7a = _box_money(text, "7a", r"federal\s+tax\s+withheld")
+    box_8 = _box_money(text, "8", r"tax\s+withheld\s+by\s+other\s+agents")
+    box_9 = _box_money(text, "9", r"overwithheld\s+tax\s+repaid\s+to\s+recipient")
+    box_10 = _box_money(text, "10", r"total\s+withholding\s+credit")
+    unique_id = _match(
+        text,
+        r"unique\s+(?:form\s+)?identifier\s*[:#\-]?\s*([A-Za-z0-9\-]+)",
+    )
+    amendment_number = _match(
+        text,
+        r"amendment\s+(?:no\.?|number)\s*[:#\-]?\s*([0-9]+)",
+    )
+    amended_marked = bool(
+        re.search(r"(?:\[x\]|☒|x)\s*amended|amended\s*[:\-]?\s*(?:yes|x|checked)", text, re.IGNORECASE)
+    )
+    revision = int(amendment_number) if amendment_number else (1 if amended_marked else 0)
+
+    if gross is None:
+        warnings.append(f"第 {page_number} 页未可靠识别 Box 2 Gross income。")
+    if income_code is None:
+        warnings.append(f"第 {page_number} 页未可靠识别 Box 1 Income code。")
+    if gross is None and income_code is None:
+        return None, warnings
+
+    category, category_reason = INCOME_CODE_CATEGORIES.get(
+        income_code or "",
+        ("other", "Income code 未在已验证映射内，只整理材料"),
+    )
+    category_confidence = "medium" if category != "other" else "low"
+
+    if box_10 is not None:
+        reported_tax = box_10
+        reported_reason = "取自 Box 10 Total withholding credit；仍需核对 7a/8/9"
+        reported_confidence = "high"
+    elif any(value is not None for value in (box_7a, box_8, box_9)):
+        reported_tax = (box_7a or Decimal("0")) + (box_8 or Decimal("0")) - (box_9 or Decimal("0"))
+        reported_reason = "由 Box 7a + Box 8 - Box 9 生成候选值，需人工核对"
+        reported_confidence = "medium"
+    else:
+        reported_tax = None
+        reported_reason = "未识别报表扣税栏位"
+        reported_confidence = "low"
+
+    normalized = _normalized(text)
+    excerpt = normalized[:600]
+    locator = f"第{page_number}页 1042-S Boxes 1/2/7a/8/9/10"
+    event_id = f"candidate-{document.sha256[:10]}-{page_number}"
+    extracted = {
+        key: format(value, "f") if isinstance(value, Decimal) else (value or "")
+        for key, value in {
+            "income_code": income_code,
+            "box_2_gross_income": gross,
+            "box_7a_federal_tax_withheld": box_7a,
+            "box_8_other_agents": box_8,
+            "box_9_repaid": box_9,
+            "box_10_total_credit": box_10,
+            "unique_form_identifier": unique_id,
+            "amendment_number": amendment_number,
+        }.items()
+    }
+    return CandidateEvent(
+        id=event_id,
+        category=CandidateField(category, category_confidence, category_reason),
+        country_or_region=CandidateField("美国", "medium", "1042-S 是美国来源预扣报表；来源地仍须人工确认"),
+        currency=CandidateField("USD", "high", "1042-S 金额以美元填报"),
+        foreign_tax_currency=CandidateField("USD", "high", "1042-S 扣税金额以美元填报"),
+        gross_amount=CandidateField(gross, "high" if gross is not None else "low", "取自 Box 2 Gross income"),
+        foreign_tax_reported=CandidateField(reported_tax, reported_confidence, reported_reason),
+        foreign_tax_eligible=CandidateField(None, "low", "中国规则下可抵免金额必须由用户确认，不自动推断"),
+        occurred_on=CandidateField(None, "low", "1042-S 通常不提供单笔收款日期，需用户补充"),
+        evidence=EvidenceLocation(document.sha256, document.file_name, page_number, locator, excerpt),
+        extracted_fields=extracted,
+        amendment_key=unique_id,
+        revision=revision,
+    ), warnings
+
+
+def recognize_document(document: ExtractedDocument) -> DocumentRecognition:
+    full_text = _normalized(" ".join(document.pages))
+    document_type = _document_type(full_text)
+    year = _tax_year(full_text)
+    tax_year = CandidateField(
+        year,
+        "high" if year else "low",
+        "从材料中的税年标识提取" if year else "未可靠识别纳税年度",
+    )
+    events: list[CandidateEvent] = []
+    warnings: list[str] = []
+
+    if not full_text:
+        warnings.append("PDF 没有可提取的文字，可能是扫描件；当前不会在未验证 OCR 的情况下猜测字段。")
+    elif document_type.value == "irs_1042_s":
+        seen_forms: set[tuple[str | None, Any, Any, int]] = set()
+        for page_number, page_text in enumerate(document.pages, start=1):
+            if "1042-s" not in page_text.lower() and "1042s" not in page_text.lower():
+                continue
+            event, page_warnings = _recognize_1042_s_page(document, page_number, page_text)
+            warnings.extend(page_warnings)
+            if event is None:
+                continue
+            signature = (
+                event.amendment_key,
+                event.gross_amount.value,
+                event.foreign_tax_reported.value,
+                event.revision,
+            )
+            if event.amendment_key and signature in seen_forms:
+                warnings.append(f"第 {page_number} 页疑似同一 1042-S 的副本，未重复生成候选事项。")
+                continue
+            seen_forms.add(signature)
+            events.append(event)
+    elif document_type.value in {"broker_statement", "bank_statement"}:
+        warnings.append("已识别材料类型，但该报表版式尚未通过字段级测试，请人工补充事项。")
+    else:
+        warnings.append("未识别到已支持的材料模板，请人工补充事项。")
+
+    status = "recognized" if events else "needs_manual_review"
+    return DocumentRecognition(document_type, tax_year, status, tuple(events), tuple(warnings))

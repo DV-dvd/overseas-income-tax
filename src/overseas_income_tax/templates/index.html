@@ -62,11 +62,13 @@
       <div class="step-number">03</div>
       <div class="panel-body">
         <h2>材料与证据</h2>
-        <p class="muted">上传只做文本提取。当前不会自动把识别结果当作计税事实；请在下一步人工确认。</p>
-        <div class="upload-row">
-          <input id="pdf-file" type="file" accept="application/pdf">
-          <button id="extract-button" class="secondary">提取 PDF 文本</button>
+        <p class="muted">可一次选择多个 PDF。已支持的 1042-S 会自动生成候选值；所有候选值都必须在下一步人工确认后才能计税。</p>
+        <div class="upload-row drop-zone" id="drop-zone">
+          <input id="pdf-file" type="file" accept="application/pdf" multiple>
+          <button id="extract-button" class="secondary">上传并自动识别</button>
         </div>
+        <p class="muted">也可以把多个 PDF 直接拖到上面的上传区域。</p>
+        <p id="upload-status" class="muted" aria-live="polite"></p>
         <div id="documents" class="document-list"></div>
       </div>
     </section>
@@ -76,8 +78,8 @@
       <div class="panel-body">
         <div class="section-head">
           <div>
-            <h2>已核验经济事项</h2>
-            <p class="muted">一笔真实收入是一项经济事项，可以关联多份证据。确认、修改或删除都要写原因。</p>
+            <h2>候选经济事项</h2>
+            <p class="muted">材料中的客观字段会自动预填。黄色字段需要重点核对；确认、修改或删除都要记录原因。</p>
           </div>
           <button id="add-event" class="secondary">＋ 添加事项</button>
         </div>

@@ -75,11 +75,53 @@ def build_xlsx(request: CalculationRequest, result: CalculationResult) -> bytes:
             float(account.excess_not_used_cny),
         ])
 
+    derivations = workbook.create_sheet("计算推导")
+    derivations.append([
+        "事项ID", "来源文件", "页码", "证据位置", "原文片段", "原币收入",
+        "收入币种", "折算汇率", "汇率日期", "汇率来源", "折合人民币",
+        "报表扣税", "符合条件已缴税", "税款币种", "税款汇率", "推导公式",
+    ])
+    _header(derivations[1])
+    for item in result.event_derivations:
+        derivations.append([
+            item.event_id,
+            item.file_name,
+            item.page,
+            item.locator,
+            item.excerpt,
+            float(item.gross_amount),
+            item.currency,
+            float(item.cny_per_unit),
+            item.rate_date.isoformat(),
+            item.rate_source,
+            float(item.gross_cny),
+            float(item.foreign_tax_reported),
+            float(item.foreign_tax_eligible),
+            item.foreign_tax_currency,
+            float(item.foreign_tax_cny_per_unit),
+            item.formula,
+        ])
+    derivations.append([])
+    derivations.append(["汇总项目", "结果（人民币）", "推导公式"])
+    _header(derivations[derivations.max_row])
+    for item in result.summary_derivations:
+        derivations.append([item.label, float(item.result_cny), item.formula])
+
     audit = workbook.create_sheet("待核验与规则")
     audit.append(["阻断", "代码", "事项ID", "说明"])
     _header(audit[1])
     for item in result.pending_items:
         audit.append(["是" if item.blocking else "否", item.code, item.event_id or "", item.message])
+    if request.audit_reviews:
+        audit.append([])
+        audit.append(["抽检事项ID", "结果", "备注"])
+        _header(audit[audit.max_row])
+        for review in request.audit_reviews:
+            audit.append([
+                review.event_id,
+                "一致" if review.status.value == "consistent" else "不一致",
+                review.note,
+            ])
     audit.append([])
     audit.append(["汇率币种", "汇率日期", "1原币=CNY", "报价单位", "规则编号", "来源"])
     _header(audit[audit.max_row])
