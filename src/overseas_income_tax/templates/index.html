@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>境外收入申报辅助工具</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <header class="masthead">
+    <div class="eyebrow">本地运行 · V1 开发预览</div>
+    <h1>境外收入申报辅助工具</h1>
+    <p>对已核验的境外利息和普通现金股息做范围内测算，同时保留证据和待核验事项。</p>
+    <div class="scope-banner">资本利得、复杂理财、特殊居民身份和历史补报只整理材料，不输出全年最终税额。</div>
+  </header>
+
+  <main>
+    <section class="panel" id="consent-panel">
+      <div class="step-number">01</div>
+      <div class="panel-body">
+        <h2>开始前确认</h2>
+        <p class="muted">当前版本只在本机内存处理数据，不调用模型，不自动登录或提交税务系统。</p>
+        <label class="check"><input id="privacy-consent" type="checkbox"> 我已阅读隐私说明，了解文件在本机进程内处理。</label>
+        <label class="check"><input id="disclaimer-consent" type="checkbox"> 我了解测算不构成税务意见，最终以主管税务机关确认为准。</label>
+        <label class="check"><input id="financial-consent" type="checkbox"> 我单独同意处理材料中的金融账户信息。</label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="step-number">02</div>
+      <div class="panel-body">
+        <h2>适用性问卷</h2>
+        <div class="grid three">
+          <label>纳税年度<input id="tax-year" type="number" min="2019" max="2100" value="2025"></label>
+          <label>居民身份
+            <select id="residency">
+              <option value="confirmed_china_resident">已确认是中国税收居民</option>
+              <option value="uncertain">不确定</option>
+              <option value="special_no_domicile">无住所居民等特殊情形</option>
+            </select>
+          </label>
+          <label>申报情形
+            <select id="filing-scenario">
+              <option value="annual_return">正常年度申报</option>
+              <option value="late_prior_year">补报往年</option>
+              <option value="prior_prepayment">已有预缴</option>
+              <option value="correction">更正申报</option>
+            </select>
+          </label>
+        </div>
+        <div class="checks-grid">
+          <label class="check"><input id="country-reviewed" type="checkbox"> 已核对同一国家（地区）的其他所得</label>
+          <label class="check"><input id="prior-reviewed" type="checkbox"> 已核对历史未抵免余额</label>
+          <label class="check"><input id="refund-reviewed" type="checkbox"> 已核对境外退税与更正</label>
+          <label class="check"><input id="has-prior" type="checkbox"> 存在历史未抵免余额</label>
+          <label class="check"><input id="has-refund" type="checkbox"> 存在境外退税或更正</label>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="step-number">03</div>
+      <div class="panel-body">
+        <h2>材料与证据</h2>
+        <p class="muted">上传只做文本提取。当前不会自动把识别结果当作计税事实；请在下一步人工确认。</p>
+        <div class="upload-row">
+          <input id="pdf-file" type="file" accept="application/pdf">
+          <button id="extract-button" class="secondary">提取 PDF 文本</button>
+        </div>
+        <div id="documents" class="document-list"></div>
+      </div>
+    </section>
+
+    <section class="panel wide">
+      <div class="step-number">04</div>
+      <div class="panel-body">
+        <div class="section-head">
+          <div>
+            <h2>已核验经济事项</h2>
+            <p class="muted">一笔真实收入是一项经济事项，可以关联多份证据。确认、修改或删除都要写原因。</p>
+          </div>
+          <button id="add-event" class="secondary">＋ 添加事项</button>
+        </div>
+        <div id="events" class="events"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="step-number">05</div>
+      <div class="panel-body">
+        <h2>汇率记录</h2>
+        <p class="muted">先确定申报情形，再填写适用日期的人民银行人民币汇率中间价。固定引擎不联网。</p>
+        <div id="rates" class="rates"></div>
+        <button id="add-rate" class="secondary">＋ 添加币种</button>
+      </div>
+    </section>
+
+    <section class="action-bar">
+      <div>
+        <strong>规则快照 v1-2026-10-11</strong>
+        <span>事实或汇率变化后必须重新计算。</span>
+      </div>
+      <div class="actions">
+        <button id="calculate-button">开始范围内测算</button>
+        <button id="export-button" class="secondary" disabled>导出 Excel</button>
+      </div>
+    </section>
+
+    <section id="result" class="result hidden" aria-live="polite"></section>
+
+    <section class="panel">
+      <div class="step-number">06</div>
+      <div class="panel-body">
+        <h2>申报指引（电脑端核验路径）</h2>
+        <p class="muted">核验日期：2026-10-11。工具不会自动登录或提交税务系统。</p>
+        <ol class="guide">
+          <li>自然人电子税务局 → 我要办税 → 税费申报 → 年度汇算（取得境外所得适用），选择收入所属年度。</li>
+          <li>核对基础信息和汇算地；保留并核对系统已带入的境内数据。</li>
+          <li>在“其他项目所得计税信息”录入已核验的利息、股息、红利应纳税所得额。</li>
+          <li>税款计算 → 境外所得已纳所得税抵免额 → 修改 → 其他分类所得 → 按国家（地区）新增。</li>
+          <li>分开核对本年境外已纳税额、本年抵免额和历史结转；上传凭证后保存附表，再确认主表已带入。</li>
+          <li>提交后继续缴款并查询结果。“提交成功”不等于“缴款成功”。</li>
+        </ol>
+        <p><a href="https://finance.sina.cn/2026-05-15/detail-inhxytzf3310745.d.html" target="_blank" rel="noreferrer">查看北京税务操作图解</a></p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <a href="https://www.chinatax.gov.cn/chinatax/n810219/n810744/n3752930/n3752974/c3963364/content.html" target="_blank" rel="noreferrer">个人所得税法实施条例</a>
+    <a href="https://12366.chinatax.gov.cn/bzds/082/082-5-4.html" target="_blank" rel="noreferrer">境外所得公告（2020年第3号）</a>
+  </footer>
+
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+</body>
+</html>

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""创建虚拟环境并安装 PDF/Excel 依赖。
+"""创建虚拟环境并安装网页、PDF 与 Excel 依赖。
 
 用法:
     python setup_env.py <工作目录>
 
-会在 <工作目录>/.venv 创建虚拟环境，安装 openpyxl 和 pypdf，
+会在 <工作目录>/.venv 创建虚拟环境，安装 flask、openpyxl 和 pypdf，
 最后打印 venv python 的绝对路径（后续所有 python 调用都用它）。
 
 Windows 下 pip 可能因 SSL 问题失败，带自动重试。
@@ -48,7 +48,7 @@ def main():
         print("[setup] pip 升级失败，继续（非致命）")
 
     # 安装依赖（带重试，应对 SSL 偶发失败）。统一用 python -m pip，避免 pip 自更新后路径失效
-    deps = ["openpyxl", "pypdf"]
+    deps = ["flask", "openpyxl", "pypdf"]
     for attempt in range(3):
         try:
             print(f"[setup] 安装依赖（第 {attempt + 1} 次尝试）: {deps}")

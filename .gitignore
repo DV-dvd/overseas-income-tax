@@ -4,6 +4,7 @@
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
 
 # 用户敏感数据（本仓库只含 SKILL 本身）
 *.pdf
