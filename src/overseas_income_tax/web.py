@@ -12,6 +12,7 @@ from .exporter import build_xlsx
 from .extraction import extract_pdf_bytes
 from .models import to_primitive
 from .recognition import recognize_document
+from .reference_rates import rates_for_year
 
 
 def create_app() -> Flask:
@@ -49,6 +50,14 @@ def create_app() -> Flask:
     @app.get("/api/schema/calculation-request")
     def calculation_request_schema_api():
         return jsonify(calculation_request_schema())
+
+    @app.get("/api/v1/reference-rates/<int:tax_year>")
+    def reference_rates_api(tax_year: int):
+        return jsonify({
+            "tax_year": tax_year,
+            "rates": to_primitive(rates_for_year(tax_year)),
+            "notice": "版本化官方参考值；用户仍应在申报前核对适用情形。",
+        })
 
     @app.post("/api/v1/extract")
     @app.post("/api/extract")

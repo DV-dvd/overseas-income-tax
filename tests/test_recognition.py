@@ -55,3 +55,71 @@ def test_amended_1042s_carries_revision_for_supersession():
     result = recognize_document(document(amended))
     assert result.events[0].amendment_key == "ABC-123"
     assert result.events[0].revision == 2
+
+
+def test_1042s_split_lines_do_not_consume_the_next_box_number():
+    split = """
+Form 1042-S 2025
+1 Income
+code
+06
+2 Gross income
+840.00
+7a Federal tax withheld
+84.00
+8 Tax withheld by other agents
+9 Overwithheld tax repaid to recipient
+10 Total withholding credit (combine boxes 7a, 8, and 9)
+84.00
+0 0 1 4 5 6 7 8 9 0 UNIQUE FORM IDENTIFIER AMENDED 0 NO.
+"""
+    result = recognize_document(document(split))
+    candidate = result.events[0]
+    assert candidate.foreign_tax_reported.value == Decimal("84.00")
+    assert candidate.extracted_fields["box_8_other_agents"] == ""
+    assert candidate.extracted_fields["box_9_repaid"] == ""
+    assert candidate.amendment_key == "0014567890"
+
+
+def test_supported_bank_statement_extracts_interest_by_currency_section():
+    result = recognize_document(document("""
+Statement Savings Account 儲蓄(結單)賬戶
+Statement Period 結 單 期
+HKD 05JUN25 Balance B/F 1,000.00
+02JUL25 0000 INTEREST 利息收入 8.88 1,008.88
+USD 05JUN25 Balance B/F 2,000.00
+02JUL25 0000 INTEREST 利息收入 9.99 2,009.99
+"""))
+    assert result.document_type.value == "bank_savings_statement"
+    assert [event.currency.value for event in result.events] == ["HKD", "USD"]
+    assert [event.gross_amount.value for event in result.events] == [Decimal("8.88"), Decimal("9.99")]
+    assert result.tax_year.value == "2025"
+
+
+def test_supported_activity_statement_extracts_detail_not_totals_or_debit_interest():
+    result = recognize_document(document("""
+活动报表
+股息
+2025-03-31 FUND(US0000000001) 现金红利 USD 每股 0.10 (常规股息) 12.34
+总数 USD 12.34
+代扣税款
+2025-03-31 FUND(US0000000001) 现金红利 USD 每股 0.10 - US 税收 -1.23
+利息
+2025-07-03 USD 贷方利息- 六月-2025 45.67
+2025-07-03 USD 借方利息- 六月-2025 -1.00
+"""))
+    assert result.document_type.value == "ibkr_activity_statement"
+    assert [event.category.value for event in result.events] == ["dividend", "interest"]
+    assert result.events[0].foreign_tax_reported.value == Decimal("1.23")
+    assert result.events[1].gross_amount.value == Decimal("45.67")
+
+
+def test_substitute_dividend_is_visible_and_keeps_result_out_of_scope():
+    result = recognize_document(document("""
+活动报表
+2025-08-01 FUND(US0000000001) PAYMENT IN LIEU OF DIVIDEND USD 4.50
+"""))
+    assert len(result.events) == 1
+    assert result.events[0].category.value == "other"
+    assert result.events[0].gross_amount.value == Decimal("4.50")
+    assert any("替代股息" in warning for warning in result.warnings)

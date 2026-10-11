@@ -49,11 +49,17 @@ def _event(identifier: str, observation_id: str, **changes) -> EconomicEvent:
     return replace(base, **changes)
 
 
-def _observation(identifier: str, digest: str, *, summary: bool = False) -> RawObservation:
+def _observation(
+    identifier: str,
+    digest: str,
+    *,
+    summary: bool = False,
+    aggregation_level: str = "",
+) -> RawObservation:
     return RawObservation(
         identifier,
         EvidenceLocation(digest, f"{identifier}.pdf", 1, "box-2"),
-        {"gross": "1000"},
+        {"gross": "1000", "aggregation_level": aggregation_level},
         summary,
     )
 
@@ -126,12 +132,20 @@ def cases() -> list[tuple[str, CalculationRequest, Decimal | None, bool]]:
         ],
         [_observation("conflict-a-observation", "conflict-a"), _observation("conflict-b-observation", "conflict-b")],
     )
+    aggregate_and_detail = _request(
+        [_event("aggregate", "aggregate-observation"), _event("detail", "detail-observation")],
+        [
+            _observation("aggregate-observation", "aggregate", aggregation_level="form_summary"),
+            _observation("detail-observation", "detail", aggregation_level="transaction_detail"),
+        ],
+    )
     return [
         ("duplicate_upload", duplicate, Decimal("7000.00"), False),
         ("amended_replaces_original", amended, Decimal("8400.00"), False),
         ("summary_not_tax_input", summary, None, True),
         ("duplicate_form_copy", duplicate_form_copy, Decimal("7000.00"), False),
         ("same_revision_conflict", conflicting_forms, None, True),
+        ("aggregate_detail_reconciliation", aggregate_and_detail, None, True),
     ]
 
 
@@ -141,6 +155,7 @@ def _without_integrity(request: CalculationRequest) -> CalculationRequest:
             item,
             evidence=replace(item.evidence, document_sha256=f"unique-{index}"),
             is_summary_row=False,
+            fields={key: value for key, value in item.fields.items() if key != "aggregation_level"},
         )
         for index, item in enumerate(request.observations)
     )
@@ -179,7 +194,7 @@ def run_ablation() -> dict[str, object]:
         )
     passed = with_integrity_pass == len(rows) and without_integrity_pass < with_integrity_pass
     return {
-        "dataset": "synthetic-adversarial-v2",
+        "dataset": "synthetic-adversarial-v3",
         "claim_limit": "Regression evidence only; not a real-world accuracy claim.",
         "with_integrity_passed": with_integrity_pass,
         "without_integrity_passed": without_integrity_pass,

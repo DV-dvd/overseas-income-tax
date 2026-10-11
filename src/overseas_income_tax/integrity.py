@@ -87,10 +87,58 @@ def validate(request: CalculationRequest) -> IntegrityResult:
                 continue
             superseded_ids.update(event.id for event in confirmed if event is not winners[0])
 
+    def aggregation_level(event: EconomicEvent) -> str:
+        levels = {
+            observations[evidence_id].fields.get("aggregation_level", "")
+            for evidence_id in event.evidence_ids
+            if evidence_id in observations
+        }
+        return next((level for level in levels if level), "")
+
+    summary_ids = {
+        event.id
+        for event in request.events
+        if any(observations[evidence_id].is_summary_row for evidence_id in event.evidence_ids if evidence_id in observations)
+    }
+    detail_events = [
+        event
+        for event in request.events
+        if event.review_status is not ReviewStatus.REJECTED
+        and event.id not in superseded_ids | conflicted_ids | summary_ids
+        and aggregation_level(event) == "transaction_detail"
+    ]
+    reconciliation_ids: set[str] = set()
+    for aggregate in request.events:
+        if (
+            aggregate.review_status is ReviewStatus.REJECTED
+            or aggregate.id in superseded_ids | conflicted_ids | summary_ids
+            or aggregation_level(aggregate) != "form_summary"
+        ):
+            continue
+        overlaps = any(
+            detail.category == aggregate.category
+            and detail.currency == aggregate.currency
+            and (
+                not detail.country_or_region
+                or not aggregate.country_or_region
+                or detail.country_or_region == aggregate.country_or_region
+            )
+            for detail in detail_events
+        )
+        if overlaps:
+            reconciliation_ids.add(aggregate.id)
+            pending.append(
+                PendingItem(
+                    "aggregate_detail_reconciliation_required",
+                    "同时存在汇总表和逐笔明细。请核对覆盖范围后，将该汇总事项标记为“汇总凭证，不重复计税”，或删除重复事项。",
+                    aggregate.id,
+                )
+            )
+
     active: list[EconomicEvent] = []
     seen_exact_events: dict[tuple[object, ...], str] = {}
     for event in request.events:
-        if event.id in superseded_ids or event.id in conflicted_ids or event.review_status is ReviewStatus.REJECTED:
+        if event.id in superseded_ids or event.id in conflicted_ids or event.id in reconciliation_ids or event.review_status is ReviewStatus.REJECTED:
             continue
         missing_evidence = [evidence_id for evidence_id in event.evidence_ids if evidence_id not in observations]
         if missing_evidence:
@@ -105,10 +153,12 @@ def validate(request: CalculationRequest) -> IntegrityResult:
             pending.append(
                 PendingItem(
                     "summary_row_not_tax_input",
-                    "汇总行只能用于勾稽，不能作为计税明细。",
+                    "该事项已作为汇总凭证用于勾稽，不重复进入计税明细。",
                     event.id,
+                    blocking=False,
                 )
             )
+            continue
         evidence_signature = tuple(
             sorted(
                 (

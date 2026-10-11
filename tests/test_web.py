@@ -23,12 +23,23 @@ def test_agent_can_discover_capabilities_and_request_schema():
     assert capability_response.status_code == 200
     assert capability_response.json["agent_vendor_neutral"] is True
     assert capability_response.json["interfaces"]["http"]["calculate"] == "/api/v1/calculate"
-    assert capability_response.json["recognition"]["supported_templates"] == ["irs_1042_s"]
+    assert capability_response.json["recognition"]["supported_templates"] == [
+        "irs_1042_s", "bank_savings_statement", "ibkr_activity_statement"
+    ]
     assert schema_response.status_code == 200
     assert schema_response.json["$schema"] == "https://json-schema.org/draft/2020-12/schema"
     assert set(schema_response.json["required"]) == {
         "questionnaire", "events", "observations", "exchange_rates"
     }
+
+
+def test_reference_rates_are_versioned_official_records():
+    client = create_app().test_client()
+    response = client.get("/api/v1/reference-rates/2025")
+    assert response.status_code == 200
+    assert {item["currency"] for item in response.json["rates"]} == {"USD", "HKD"}
+    assert all(item["rate_date"] == "2025-12-31" for item in response.json["rates"])
+    assert all("safe.gov.cn" in item["source"] for item in response.json["rates"])
 
 
 def test_calculation_endpoint():

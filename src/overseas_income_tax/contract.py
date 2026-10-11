@@ -6,7 +6,7 @@ from typing import Any
 
 
 API_VERSION = "v1"
-CONTRACT_VERSION = "1.1.0"
+CONTRACT_VERSION = "1.2.0"
 
 
 def capabilities() -> dict[str, Any]:
@@ -28,6 +28,7 @@ def capabilities() -> dict[str, Any]:
                 "schema": "/api/v1/schema/calculation-request",
                 "calculate": "/api/v1/calculate",
                 "extract": "/api/v1/extract",
+                "reference_rates": "/api/v1/reference-rates/{tax_year}",
                 "export": "/api/v1/export.xlsx",
             },
         },
@@ -39,7 +40,7 @@ def capabilities() -> dict[str, Any]:
         },
         "recognition": {
             "mode": "rule_first",
-            "supported_templates": ["irs_1042_s"],
+            "supported_templates": ["irs_1042_s", "bank_savings_statement", "ibkr_activity_statement"],
             "candidate_values_require_human_confirmation": True,
             "unsupported_templates": "materials_only",
         },

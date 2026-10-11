@@ -45,18 +45,26 @@ function addEvent(defaults = {}) {
       <label class="check"><input name="source-confirmed" type="checkbox"> 来源地已确认</label>
       <label class="check"><input name="nature-confirmed" type="checkbox"> 所得性质已确认</label>
       <label class="check"><input name="tax-confirmed" type="checkbox"> 可抵免境外税款已确认</label>
+      <label class="check"><input name="summary-row" type="checkbox"> 汇总凭证，不重复计税</label>
     </div>`;
   card.querySelector('[name="category"]').value = defaults.category || "interest";
   card.querySelector('[name="country"]').value = defaults.country || "";
   card.querySelector('[name="date"]').value = defaults.date || "";
-  card.querySelector('[name="currency"]').value = defaults.currency || "USD";
-  card.querySelector('[name="tax-currency"]').value = defaults.taxCurrency || defaults.currency || "USD";
+  const fallbackCurrency = defaults.candidate ? "" : "USD";
+  card.querySelector('[name="currency"]').value = defaults.currency ?? fallbackCurrency;
+  card.querySelector('[name="tax-currency"]').value = defaults.taxCurrency ?? defaults.currency ?? fallbackCurrency;
   card.querySelector('[name="gross"]').value = defaults.gross ?? "";
   card.querySelector('[name="reported-tax"]').value = defaults.reportedTax ?? "";
   card.querySelector('[name="eligible-tax"]').value = defaults.eligibleTax ?? "";
   card.querySelector('[name="page"]').value = defaults.page || 1;
   card.querySelector('[name="locator"]').value = defaults.locator || "";
   card.querySelector('[name="reason"]').value = defaults.reason || (defaults.candidate ? "规则自动预填，待人工核对" : "");
+  card.querySelector('[name="summary-row"]').checked = Boolean(defaults.summaryRow);
+  if (defaults.summaryRecommended) {
+    const summaryLabel = card.querySelector('[name="summary-row"]').closest('label');
+    summaryLabel.classList.add('needs-review');
+    summaryLabel.title = '检测到汇总表。若已上传覆盖同一收入的逐笔明细，请勾选以避免重复计税。';
+  }
   card.querySelector('.remove-event').addEventListener('click', () => {
     if (card.dataset.rejected === 'true') {
       card.dataset.rejected = 'false';
@@ -124,6 +132,46 @@ function updateCandidateState(card) {
   }
 }
 
+function confirmReadyCandidates() {
+  document.querySelectorAll('.event-card:not(.rejected)').forEach(card => {
+    const required = ['country', 'currency', 'gross', 'reported-tax', 'eligible-tax', 'tax-currency'];
+    if (!required.every(name => card.querySelector(`[name="${name}"]`).value.trim() !== '')) return;
+    ['confirmed', 'source-confirmed', 'nature-confirmed', 'tax-confirmed'].forEach(name => {
+      card.querySelector(`[name="${name}"]`).checked = true;
+    });
+    card.querySelector('[name="reason"]').value = '批量核对材料后确认自动预填值';
+    updateCandidateState(card);
+  });
+  markStale();
+}
+
+function adoptReportedTax() {
+  const accepted = window.confirm('仅当你已核对这些扣税确为实际缴纳的所得税，且不属于错征、可退或税收协定下不应征收的税款时继续。是否将已匹配的报表扣税批量填入“符合条件的已缴税”？');
+  if (!accepted) return;
+  document.querySelectorAll('.event-card:not(.rejected)').forEach(card => {
+    const category = card.querySelector('[name="category"]').value;
+    const reported = card.querySelector('[name="reported-tax"]').value;
+    const eligible = card.querySelector('[name="eligible-tax"]');
+    if (!['interest', 'dividend'].includes(category) || reported === '' || eligible.value !== '') return;
+    eligible.value = reported;
+    card.querySelector('[name="tax-confirmed"]').checked = true;
+    card.querySelector('[name="reason"]').value = '用户批量确认采用已匹配的报表扣税';
+    updateCandidateState(card);
+  });
+  markStale();
+}
+
+function markFormSummaries() {
+  const accepted = window.confirm('仅当逐笔明细已经完整覆盖同一收入时继续。标记后，1042-S 只用于勾稽，不会与逐笔明细重复计税。');
+  if (!accepted) return;
+  document.querySelectorAll('.event-card:not(.rejected)').forEach(card => {
+    if (card._extractedFields?.aggregation_level !== 'form_summary') return;
+    card.querySelector('[name="summary-row"]').checked = true;
+    card.querySelector('[name="reason"]').value = '用户确认该表单只作汇总勾稽凭证';
+  });
+  markStale();
+}
+
 function addRate(currency = "USD") {
   const row = document.createElement("div");
   row.className = "rate-row";
@@ -134,8 +182,39 @@ function addRate(currency = "USD") {
     <label>官方来源<input name="rate-source" placeholder="人民银行或中国外汇交易中心链接"></label>
     <button type="button" class="secondary remove-rate">删除</button>`;
   row.querySelector('.remove-rate').addEventListener('click', () => { row.remove(); markStale(); });
-  row.addEventListener('change', markStale);
+  row.addEventListener('change', () => {
+    delete row.dataset.referenceManaged;
+    markStale();
+  });
   $('#rates').append(row);
+  return row;
+}
+
+async function loadReferenceRates() {
+  const taxYear = Number($('#tax-year').value);
+  document.querySelectorAll('.rate-row[data-reference-managed="true"]').forEach(row => {
+    row.querySelector('[name="rate-value"]').value = '';
+    row.querySelector('[name="rate-date"]').value = '';
+    row.querySelector('[name="rate-source"]').value = '';
+    delete row.dataset.referenceManaged;
+  });
+  try {
+    const response = await fetch(`/api/v1/reference-rates/${taxYear}`);
+    if (!response.ok) return;
+    const body = await response.json();
+    body.rates.forEach(rate => {
+      let row = [...document.querySelectorAll('.rate-row')]
+        .find(candidate => candidate.querySelector('[name="rate-currency"]').value.toUpperCase() === rate.currency);
+      if (!row) row = addRate(rate.currency);
+      if (row.querySelector('[name="rate-value"]').value.trim()) return;
+      row.querySelector('[name="rate-value"]').value = rate.cny_per_unit;
+      row.querySelector('[name="rate-date"]').value = rate.rate_date;
+      row.querySelector('[name="rate-source"]').value = rate.source;
+      row.dataset.referenceManaged = 'true';
+    });
+  } catch (_) {
+    // Offline use remains available; unresolved rates stay visibly blank.
+  }
 }
 
 function refreshDocumentOptions() {
@@ -200,10 +279,12 @@ async function extractPdfs() {
   $('#upload-status').textContent = `处理完成：${recognized} 个已生成候选值，${review} 个需人工核对，${failed} 个失败。`;
   $('#extract-button').disabled = false;
   $('#pdf-file').value = '';
+  await loadReferenceRates();
 }
 
 function addCandidateEvent(candidate, documentInfo) {
   const value = name => candidate[name]?.value ?? '';
+  const aggregationLevel = candidate.extracted_fields?.aggregation_level || '';
   addEvent({
     id: candidate.id,
     candidate: true,
@@ -222,6 +303,7 @@ function addCandidateEvent(candidate, documentInfo) {
     amendmentKey: candidate.amendment_key,
     revision: candidate.revision,
     extractedFields: candidate.extracted_fields,
+    summaryRecommended: aggregationLevel === 'form_summary',
     fieldMeta: candidate,
   });
 }
@@ -308,7 +390,7 @@ function buildPayload() {
         excerpt: card.dataset.excerpt || '',
       },
       fields: { source: doc ? 'pdf_rule_candidate' : 'manual', ...card._extractedFields },
-      is_summary_row: false,
+      is_summary_row: card.querySelector('[name="summary-row"]').checked,
     });
     events.push({
       id,
@@ -547,6 +629,9 @@ async function exportXlsx() {
 }
 
 $('#add-event').addEventListener('click', () => addEvent());
+$('#confirm-ready').addEventListener('click', confirmReadyCandidates);
+$('#adopt-reported-tax').addEventListener('click', adoptReportedTax);
+$('#mark-form-summaries').addEventListener('click', markFormSummaries);
 $('#add-rate').addEventListener('click', () => addRate(''));
 $('#extract-button').addEventListener('click', extractPdfs);
 $('#calculate-button').addEventListener('click', calculate);
@@ -569,3 +654,5 @@ dropZone.addEventListener('drop', event => {
 document.querySelectorAll('input, select').forEach(input => input.addEventListener('change', markStale));
 addRate('USD');
 addRate('HKD');
+$('#tax-year').addEventListener('change', loadReferenceRates);
+loadReferenceRates();

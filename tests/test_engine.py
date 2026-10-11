@@ -22,11 +22,17 @@ from overseas_income_tax.models import (
 )
 
 
-def observation(identifier: str, *, digest: str | None = None, summary: bool = False) -> RawObservation:
+def observation(
+    identifier: str,
+    *,
+    digest: str | None = None,
+    summary: bool = False,
+    aggregation_level: str = "",
+) -> RawObservation:
     return RawObservation(
         id=f"o-{identifier}",
         evidence=EvidenceLocation(digest or f"hash-{identifier}", f"{identifier}.pdf", 1, "box"),
-        fields={"gross": "1000"},
+        fields={"gross": "1000", "aggregation_level": aggregation_level},
         is_summary_row=summary,
     )
 
@@ -142,11 +148,24 @@ def test_conflicting_same_revision_forms_are_all_excluded():
     assert any(item.code == "amendment_conflict" and item.blocking for item in result.pending_items)
 
 
-def test_summary_row_is_a_blocking_integrity_issue():
+def test_summary_row_is_excluded_from_tax_input():
     item = event("summary")
     result = calculate(request(item, observations=[observation("summary", summary=True)]))
-    assert result.status is ResultStatus.RANGE_ESTIMATE_WITH_PENDING
-    assert any(item.code == "summary_row_not_tax_input" for item in result.pending_items)
+    assert result.status is ResultStatus.MATERIALS_ONLY
+    assert result.taxable_income_cny == Decimal("0.00")
+    assert any(item.code == "summary_row_not_tax_input" and not item.blocking for item in result.pending_items)
+
+
+def test_aggregate_and_detail_require_explicit_reconciliation():
+    aggregate = event("aggregate")
+    detail = event("detail")
+    observations = [
+        observation("aggregate", aggregation_level="form_summary"),
+        observation("detail", aggregation_level="transaction_detail"),
+    ]
+    result = calculate(request(aggregate, detail, observations=observations))
+    assert result.included_event_ids == ("detail",)
+    assert any(item.code == "aggregate_detail_reconciliation_required" and item.blocking for item in result.pending_items)
 
 
 def test_duplicate_upload_of_same_evidence_does_not_change_result():

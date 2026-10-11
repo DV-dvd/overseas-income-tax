@@ -62,7 +62,7 @@
       <div class="step-number">03</div>
       <div class="panel-body">
         <h2>材料与证据</h2>
-        <p class="muted">可一次选择多个 PDF。已支持的 1042-S 会自动生成候选值；所有候选值都必须在下一步人工确认后才能计税。</p>
+        <p class="muted">可一次选择多个 PDF。已支持 1042-S、储蓄账户月结单和券商活动报表；逐笔日期、币种、收入及匹配到的扣税会自动预填。</p>
         <div class="upload-row drop-zone" id="drop-zone">
           <input id="pdf-file" type="file" accept="application/pdf" multiple>
           <button id="extract-button" class="secondary">上传并自动识别</button>
@@ -81,7 +81,12 @@
             <h2>候选经济事项</h2>
             <p class="muted">材料中的客观字段会自动预填。黄色字段需要重点核对；确认、修改或删除都要记录原因。</p>
           </div>
-          <button id="add-event" class="secondary">＋ 添加事项</button>
+          <div class="actions">
+            <button id="adopt-reported-tax" class="secondary">采用已匹配扣税</button>
+            <button id="mark-form-summaries" class="secondary">1042-S 作为汇总凭证</button>
+            <button id="confirm-ready" class="secondary">确认全部已完整预填项</button>
+            <button id="add-event" class="secondary">＋ 添加事项</button>
+          </div>
         </div>
         <div id="events" class="events"></div>
       </div>
@@ -91,7 +96,7 @@
       <div class="step-number">05</div>
       <div class="panel-body">
         <h2>汇率记录</h2>
-        <p class="muted">先确定申报情形，再填写适用日期的人民银行人民币汇率中间价。固定引擎不联网。</p>
+        <p class="muted">2025 年 USD/HKD 会从内置的外汇管理局版本化记录自动填入；其他年度或币种保持空白并要求核对。</p>
         <div id="rates" class="rates"></div>
         <button id="add-rate" class="secondary">＋ 添加币种</button>
       </div>
