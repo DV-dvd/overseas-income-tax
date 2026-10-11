@@ -6,6 +6,7 @@ from io import BytesIO
 from flask import Flask, jsonify, render_template, request, send_file
 
 from .codec import InputError, request_from_dict
+from .contract import API_VERSION, calculation_request_schema, capabilities
 from .engine import calculate
 from .exporter import build_xlsx
 from .extraction import extract_pdf_bytes
@@ -21,6 +22,7 @@ def create_app() -> Flask:
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["X-Overseas-Income-Tax-API-Version"] = API_VERSION
         return response
 
     @app.get("/")
@@ -31,6 +33,23 @@ def create_app() -> Flask:
     def health():
         return {"status": "ok", "storage": "memory-only", "model": "disabled"}
 
+    def json_payload() -> dict:
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            raise InputError("请求体必须是有效的 JSON 对象。")
+        return payload
+
+    @app.get("/api/v1/capabilities")
+    @app.get("/api/capabilities")
+    def capabilities_api():
+        return jsonify(capabilities())
+
+    @app.get("/api/v1/schema/calculation-request")
+    @app.get("/api/schema/calculation-request")
+    def calculation_request_schema_api():
+        return jsonify(calculation_request_schema())
+
+    @app.post("/api/v1/extract")
     @app.post("/api/extract")
     def extract():
         uploaded = request.files.get("file")
@@ -52,19 +71,21 @@ def create_app() -> Flask:
             "notice": "仅提取文本并返回浏览器；服务端不建立持久存储。请人工确认后再形成经济事项。",
         })
 
+    @app.post("/api/v1/calculate")
     @app.post("/api/calculate")
     def calculate_api():
         try:
-            calculation_request = request_from_dict(request.get_json(force=True))
+            calculation_request = request_from_dict(json_payload())
             result = calculate(calculation_request)
         except InputError as exc:
             return jsonify({"error": str(exc)}), 400
         return jsonify(to_primitive(result))
 
+    @app.post("/api/v1/export.xlsx")
     @app.post("/api/export.xlsx")
     def export_api():
         try:
-            calculation_request = request_from_dict(request.get_json(force=True))
+            calculation_request = request_from_dict(json_payload())
             result = calculate(calculation_request)
         except InputError as exc:
             return jsonify({"error": str(exc)}), 400

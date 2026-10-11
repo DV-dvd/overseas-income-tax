@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "overseas-income-tax"
-version = "0.1.0"
+version = "0.2.0"
 description = "中国居民境外利息与普通现金股息的范围内税额测算工具"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -18,7 +18,7 @@ dependencies = [
 dev = ["pytest>=8,<10"]
 
 [project.scripts]
-overseas-income-tax = "overseas_income_tax.web:main"
+overseas-income-tax = "overseas_income_tax.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -27,9 +27,8 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-overseas_income_tax = ["templates/*.html", "static/*.css", "static/*.js"]
+overseas_income_tax = ["templates/*.html", "static/*.css", "static/*.js", "schemas/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-

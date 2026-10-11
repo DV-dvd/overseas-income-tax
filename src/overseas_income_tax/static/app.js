@@ -103,7 +103,7 @@ async function extractPdf() {
   data.append('file', file);
   $('#extract-button').disabled = true;
   try {
-    const response = await fetch('/api/extract', { method: 'POST', body: data });
+    const response = await fetch('/api/v1/extract', { method: 'POST', body: data });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || '提取失败');
     if (!state.documents.some(doc => doc.sha256 === body.sha256)) state.documents.push(body);
@@ -214,7 +214,7 @@ async function calculate() {
   try {
     validateConsent();
     const payload = buildPayload();
-    const response = await fetch('/api/calculate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const response = await fetch('/api/v1/calculate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || '测算失败');
     state.lastPayload = payload;
@@ -284,7 +284,7 @@ function markStale() {
 
 async function exportXlsx() {
   if (!state.lastPayload) return;
-  const response = await fetch('/api/export.xlsx', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state.lastPayload) });
+  const response = await fetch('/api/v1/export.xlsx', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(state.lastPayload) });
   if (!response.ok) { const body = await response.json(); return showError(body.error || '导出失败'); }
   const blob = await response.blob();
   const link = document.createElement('a');

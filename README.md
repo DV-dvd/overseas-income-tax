@@ -2,7 +2,7 @@
 
 面向中国税收居民，对**已经人工核验、来源地和性质明确的境外利息与普通现金股息**做范围内税额测算，整理证据，并生成申报底稿。它不代为申报，也不把范围外事项包装成全年最终税额。
 
-当前是 V1 开发预览。网页、API 和 Excel 共用同一个固定计税引擎；模型不参与计税，运行时也不查询网络。
+当前是 V1 开发预览。网页、命令行、版本化 HTTP API、Python 包和 Excel 共用同一个固定计税引擎；模型不参与计税，运行时也不查询网络。产品不依赖 Claude Code、Codex 或任何特定 Agent 厂商。
 
 ## 已实现
 
@@ -12,6 +12,7 @@
 - 固定计税：利息与普通现金股息按规则快照计算，按国家或地区单列抵免账
 - 数据完整性：相同文件与相同证据的重复上传不重复计税；有效修订表替代原表；汇总行不参与计税
 - 同源 Excel：页面与导出文件引用同一个 CalculationResult 和计算指纹
+- Agent 中立接口：Python、CLI、HTTP/JSON、能力声明和 JSON Schema 共用版本化契约
 - 离线消融门禁：对重复上传、修订替代、汇总行误用三个合成对抗样例，移除完整性层后结果必须变差
 
 ## 明确不做
@@ -33,6 +34,23 @@ overseas-income-tax
 
 浏览器打开 <http://127.0.0.1:8765>。服务默认只绑定本机地址，文件在请求内存中解析，不建立持久存储。
 
+## Agent 接入
+
+支持三种正式调用方式：
+
+```powershell
+# 命令行：适合能执行本地工具的 Agent
+overseas-income-tax calculate --input examples/calculation-request.json
+
+# HTTP：适合跨进程或平台型 Agent
+overseas-income-tax serve
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8765/api/v1/calculate -ContentType application/json -InFile examples/calculation-request.json
+```
+
+Python 调用使用 `overseas_income_tax.calculate`。`overseas-income-tax capabilities` 输出机器可读能力，`overseas-income-tax schema` 输出请求 JSON Schema。`SKILL.md` 只是可选适配说明，程序运行时不读取它。
+
+完整契约、稳定性和安全边界见 [Agent 接入说明](docs/agent-integration.md)。
+
 ## 验证
 
 ```powershell
@@ -53,6 +71,9 @@ src/overseas_income_tax/
 ├── extraction.py   # PDF 文本 I/O
 ├── exporter.py     # 从 CalculationResult 生成 Excel
 ├── codec.py        # API 输入边界
+├── contract.py     # 能力声明、API 与契约版本
+├── cli.py          # Agent 中立命令行接口
+├── schemas/        # 机器可读请求契约
 └── web.py          # 单体应用的页面与 API
 ```
 

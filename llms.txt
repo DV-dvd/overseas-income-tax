@@ -1,0 +1,23 @@
+# Overseas Income Tax
+
+> Agent-neutral, review-first helper for China-resident overseas interest and ordinary cash dividend filing preparation.
+
+Repository: https://github.com/DV-dvd/overseas-income-tax
+Documentation: docs/agent-integration.md
+Request example: examples/calculation-request.json
+
+Interfaces:
+- Python: overseas_income_tax.calculate
+- CLI: overseas-income-tax calculate --input request.json
+- HTTP: POST /api/v1/calculate
+- Capabilities: GET /api/v1/capabilities
+- JSON Schema: GET /api/v1/schema/calculation-request
+
+Constraints:
+- No model is used for tax calculation.
+- Calculation does not require network access.
+- Client-supplied rule snapshots are ignored.
+- Human confirmation is required before an event can enter calculation.
+- Automatic calculation scope is limited to verified interest and verified ordinary cash dividends.
+- Capital gains, complex products, uncertain residency/source, prior-year, prepayment, and correction cases require review.
+- "Unsupported" never means "not reportable".

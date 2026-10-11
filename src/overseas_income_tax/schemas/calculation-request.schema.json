@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DV-dvd/overseas-income-tax/schemas/calculation-request-v1.json",
+  "title": "Overseas Income Tax Calculation Request v1",
+  "description": "Agent-neutral request contract. The server always uses its own authoritative rule snapshot and ignores a client-supplied rule_snapshot property.",
+  "type": "object",
+  "required": ["questionnaire", "events", "observations", "exchange_rates"],
+  "properties": {
+    "questionnaire": { "$ref": "#/$defs/questionnaire" },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" }
+    },
+    "observations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/observation" }
+    },
+    "exchange_rates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/exchangeRate" }
+    },
+    "rule_snapshot": {
+      "description": "Reserved output metadata. Client input is ignored so callers cannot override tax rules."
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "decimal": {
+      "anyOf": [
+        { "type": "number" },
+        { "type": "string", "pattern": "^-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?$" }
+      ]
+    },
+    "optionalDecimal": {
+      "anyOf": [
+        { "$ref": "#/$defs/decimal" },
+        { "type": "null" },
+        { "const": "" }
+      ]
+    },
+    "questionnaire": {
+      "type": "object",
+      "required": [
+        "tax_year",
+        "residency_status",
+        "filing_scenario",
+        "same_country_other_income_reviewed",
+        "prior_credit_balance_reviewed",
+        "refund_or_correction_reviewed"
+      ],
+      "properties": {
+        "tax_year": { "type": "integer", "minimum": 1980, "maximum": 2100 },
+        "residency_status": {
+          "enum": ["confirmed_china_resident", "uncertain", "special_no_domicile"]
+        },
+        "filing_scenario": {
+          "enum": ["annual_return", "late_prior_year", "prior_prepayment", "correction"]
+        },
+        "same_country_other_income_reviewed": { "type": "boolean" },
+        "prior_credit_balance_reviewed": { "type": "boolean" },
+        "refund_or_correction_reviewed": { "type": "boolean" },
+        "has_prior_credit_balance": { "type": "boolean", "default": false },
+        "has_refund_or_correction": { "type": "boolean", "default": false }
+      },
+      "additionalProperties": true
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["document_sha256", "file_name", "page"],
+      "properties": {
+        "document_sha256": { "type": "string", "minLength": 1 },
+        "file_name": { "type": "string", "minLength": 1 },
+        "page": { "type": "integer", "minimum": 1 },
+        "locator": { "type": "string" },
+        "excerpt": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "observation": {
+      "type": "object",
+      "required": ["id", "evidence"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "evidence": { "$ref": "#/$defs/evidence" },
+        "fields": {
+          "type": "object",
+          "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+        },
+        "is_summary_row": { "type": "boolean", "default": false }
+      },
+      "additionalProperties": true
+    },
+    "event": {
+      "type": "object",
+      "required": ["id", "category", "country_or_region", "currency"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "category": {
+          "enum": ["interest", "dividend", "capital_gain", "complex_product", "other"]
+        },
+        "country_or_region": { "type": ["string", "null"] },
+        "currency": { "type": "string", "minLength": 1 },
+        "foreign_tax_currency": { "type": ["string", "null"] },
+        "gross_amount": { "$ref": "#/$defs/optionalDecimal" },
+        "foreign_tax_reported": { "$ref": "#/$defs/optionalDecimal" },
+        "foreign_tax_eligible": { "$ref": "#/$defs/optionalDecimal" },
+        "occurred_on": {
+          "anyOf": [
+            { "type": "string", "format": "date" },
+            { "type": "null" },
+            { "const": "" }
+          ]
+        },
+        "evidence_ids": { "type": "array", "items": { "type": "string" } },
+        "review_status": { "enum": ["candidate", "confirmed", "rejected"], "default": "candidate" },
+        "review_reason": { "type": "string" },
+        "source_confirmed": { "type": "boolean", "default": false },
+        "nature_confirmed": { "type": "boolean", "default": false },
+        "foreign_tax_confirmed": { "type": "boolean", "default": false },
+        "amendment_key": { "type": ["string", "null"] },
+        "revision": { "type": "integer", "minimum": 0, "default": 0 },
+        "supersedes_event_id": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "exchangeRate": {
+      "type": "object",
+      "required": ["currency", "cny_per_unit", "rate_date", "source", "rule_code"],
+      "properties": {
+        "currency": { "type": "string", "minLength": 1 },
+        "cny_per_unit": { "$ref": "#/$defs/decimal" },
+        "rate_date": { "type": "string", "format": "date" },
+        "quote_unit": { "type": "integer", "minimum": 1, "default": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "rule_code": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    }
+  }
+}

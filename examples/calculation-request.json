@@ -1,0 +1,58 @@
+{
+  "questionnaire": {
+    "tax_year": 2025,
+    "residency_status": "confirmed_china_resident",
+    "filing_scenario": "annual_return",
+    "same_country_other_income_reviewed": true,
+    "prior_credit_balance_reviewed": true,
+    "refund_or_correction_reviewed": true,
+    "has_prior_credit_balance": false,
+    "has_refund_or_correction": false
+  },
+  "observations": [
+    {
+      "id": "observation-demo-1",
+      "evidence": {
+        "document_sha256": "demo-replace-with-the-sha256-of-the-source-document",
+        "file_name": "demo-statement.pdf",
+        "page": 1,
+        "locator": "Box 2",
+        "excerpt": "示例值；接入时替换为经人工核验的证据定位"
+      },
+      "fields": {
+        "source": "demo"
+      },
+      "is_summary_row": false
+    }
+  ],
+  "events": [
+    {
+      "id": "event-demo-1",
+      "category": "dividend",
+      "country_or_region": "美国",
+      "currency": "USD",
+      "foreign_tax_currency": "USD",
+      "gross_amount": "1000.00",
+      "foreign_tax_reported": "100.00",
+      "foreign_tax_eligible": "100.00",
+      "occurred_on": "2025-06-30",
+      "evidence_ids": ["observation-demo-1"],
+      "review_status": "confirmed",
+      "review_reason": "示例值；实际使用时记录人工核对原因",
+      "source_confirmed": true,
+      "nature_confirmed": true,
+      "foreign_tax_confirmed": true,
+      "revision": 0
+    }
+  ],
+  "exchange_rates": [
+    {
+      "currency": "USD",
+      "cny_per_unit": "7.000000",
+      "rate_date": "2025-12-31",
+      "quote_unit": 1,
+      "source": "demo-replace-with-official-source-url",
+      "rule_code": "PIT-REG-32-ANNUAL-BALANCE"
+    }
+  ]
+}

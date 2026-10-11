@@ -5,6 +5,8 @@ description: 为中国税收居民整理境外收入材料，并使用固定引�
 
 # 境外收入申报辅助
 
+这是可选的 Agent 适配说明，不是产品运行依赖。核心能力通过 Python 包、命令行和版本化 HTTP/JSON API 提供；没有 Skill 机制的 Agent 也能调用。
+
 先读 `references/workflow.md`，再按资料类型读取对应 reference。禁止跳过适用性问卷、证据核对和待核验清单。
 
 ## V1 边界
