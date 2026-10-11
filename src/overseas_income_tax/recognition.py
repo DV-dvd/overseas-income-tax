@@ -41,6 +41,8 @@ class DocumentRecognition:
     status: str
     events: tuple[CandidateEvent, ...]
     warnings: tuple[str, ...]
+    coverage_start: CandidateField | None = None
+    coverage_end: CandidateField | None = None
 
 
 INCOME_CODE_CATEGORIES = {
@@ -121,6 +123,22 @@ def _tax_year(text: str) -> str | None:
     return _match(text, r"form\s+1042-s.{0,80}?\b(20[0-9]{2})\b")
 
 
+def _statement_period(text: str) -> tuple[str | None, str | None]:
+    found = re.search(
+        r"statement\s+period.{0,100}?(\d{2}\s+[A-Z]{3}\s+20\d{2})\s*[-–]\s*(\d{2}\s+[A-Z]{3}\s+20\d{2})",
+        text,
+        re.IGNORECASE,
+    )
+    if not found:
+        return None, None
+    try:
+        start = datetime.strptime(found.group(1).upper(), "%d %b %Y").date().isoformat()
+        end = datetime.strptime(found.group(2).upper(), "%d %b %Y").date().isoformat()
+    except ValueError:
+        return None, None
+    return start, end
+
+
 def _document_type(text: str) -> CandidateField:
     lower = text.lower()
     if "1042-s" in lower or "1042s" in lower:
@@ -132,7 +150,11 @@ def _document_type(text: str) -> CandidateField:
         or "payment in lieu of dividend" in lower
     ):
         return CandidateField("ibkr_activity_statement", "high", "检测到券商活动报表及逐笔收益标识")
-    if "statement savings account" in lower and "interest" in lower and "statement period" in lower:
+    if (
+        "statement savings account" in lower
+        and "statement period" in lower
+        and any(marker in lower for marker in ("interest", "uplift", "time deposit"))
+    ):
         return CandidateField("bank_savings_statement", "high", "检测到储蓄账户月结单及利息交易标识")
     if "brokerage" in lower or "broker statement" in lower or "券商" in text:
         return CandidateField("broker_statement", "medium", "检测到券商报表关键词；该版式尚未验证")
@@ -223,15 +245,52 @@ def _recognize_1042_s_page(document: ExtractedDocument, page_number: int, text: 
     ), warnings
 
 
-def _recognize_bank_statement(document: ExtractedDocument) -> tuple[list[CandidateEvent], list[str]]:
+def _recognize_bank_statement(
+    document: ExtractedDocument,
+    target_year: int | None = None,
+) -> tuple[list[CandidateEvent], list[str]]:
     events: list[CandidateEvent] = []
     warnings: list[str] = []
     currency: str | None = None
     sequence = 0
     currency_line = re.compile(r"^(HKD|USD|EUR|GBP|JPY|AUD|CAD|SGD)\s+\d{2}[A-Z]{3}\d{2}\s+Balance B/F\b", re.IGNORECASE)
     interest_line = re.compile(r"^(\d{2}[A-Z]{3}\d{2})\s+0000\s+INTEREST\s+利息收入\s+([0-9,]+\.[0-9]{2})\s+[0-9,]+\.[0-9]{2}\s*$", re.IGNORECASE)
+    time_deposit_row = re.compile(
+        r"^(\d{2}[A-Z]{3}\d{2})\s+\S+\s+\S+\s+\d{2}[A-Z]{3}\d{2}\s+\d{2}[A-Z]{3}\d{2}\s+"
+        r"(HKD|USD|EUR|GBP|JPY|AUD|CAD|SGD)\s+[0-9,]+\.[0-9]{2}\s+[0-9.]+%\s+"
+        r"([0-9,]+\.[0-9]{2})\s+[0-9,]+\.[0-9]{2}\s*$",
+        re.IGNORECASE,
+    )
     for page_number, page_text in enumerate(document.pages, start=1):
-        for line in _lines(page_text):
+        page_lines = _lines(page_text)
+        expect_uplift_row = False
+        for line in page_lines:
+            if re.match(r"^Uplift\b", line, re.IGNORECASE):
+                expect_uplift_row = True
+                continue
+            if expect_uplift_row:
+                uplift = time_deposit_row.match(line)
+                expect_uplift_row = False
+                if uplift:
+                    occurred = datetime.strptime(uplift.group(1).upper(), "%d%b%y").date()
+                    if target_year is not None and occurred.year != target_year:
+                        continue
+                    sequence += 1
+                    event_currency = uplift.group(2).upper()
+                    events.append(CandidateEvent(
+                        id=f"candidate-{document.sha256[:10]}-bank-{sequence}",
+                        category=CandidateField("interest", "high", "定期存款到期提取记录单列利息金额"),
+                        country_or_region=CandidateField("中国香港", "medium", "银行月结单归属地候选值，仍需人工确认所得来源地"),
+                        currency=CandidateField(event_currency, "high", "取自定期存款到期记录币种"),
+                        foreign_tax_currency=CandidateField(event_currency, "high", "与收益币种一致；该到期记录未显示单独扣税"),
+                        gross_amount=CandidateField(_money(uplift.group(3)), "high", "取自 Uplift 记录的 Interest Amount，不采用本金或本息合计"),
+                        foreign_tax_reported=CandidateField(Decimal("0"), "medium", "该到期记录未显示代扣税额，仍需核对"),
+                        foreign_tax_eligible=CandidateField(Decimal("0"), "medium", "材料未显示已缴境外所得税，仍需人工确认"),
+                        occurred_on=CandidateField(occurred.isoformat(), "high", "取自定期存款到期提取日期"),
+                        evidence=_evidence(document, page_number, f"第{page_number}页 Time Deposit Uplift / Interest Amount", line),
+                        extracted_fields={"transaction_type": "time_deposit_maturity_interest", "aggregation_level": "transaction_detail"},
+                    ))
+                    continue
             found_currency = currency_line.match(line)
             if found_currency:
                 currency = found_currency.group(1).upper()
@@ -241,6 +300,8 @@ def _recognize_bank_statement(document: ExtractedDocument) -> tuple[list[Candida
                 continue
             sequence += 1
             occurred = datetime.strptime(found.group(1).upper(), "%d%b%y").date()
+            if target_year is not None and occurred.year != target_year:
+                continue
             event_currency = currency or ""
             confidence = "high" if currency else "low"
             if not currency:
@@ -369,6 +430,7 @@ def recognize_document(document: ExtractedDocument) -> DocumentRecognition:
     full_text = _normalized(" ".join(document.pages))
     document_type = _document_type(full_text)
     year = _tax_year(full_text)
+    coverage_start_value, coverage_end_value = _statement_period(full_text)
     events: list[CandidateEvent] = []
     warnings: list[str] = []
 
@@ -390,7 +452,8 @@ def recognize_document(document: ExtractedDocument) -> DocumentRecognition:
             seen_forms.add(signature)
             events.append(event)
     elif document_type.value == "bank_savings_statement":
-        bank_events, bank_warnings = _recognize_bank_statement(document)
+        coverage_year = int(coverage_end_value[:4]) if coverage_end_value else None
+        bank_events, bank_warnings = _recognize_bank_statement(document, coverage_year)
         events.extend(bank_events)
         warnings.extend(bank_warnings)
     elif document_type.value == "ibkr_activity_statement":
@@ -408,4 +471,14 @@ def recognize_document(document: ExtractedDocument) -> DocumentRecognition:
             year = event_years.pop()
     tax_year = CandidateField(year, "high" if year else "low", "从材料税年或逐笔日期提取" if year else "未可靠识别纳税年度")
     status = "recognized" if events else "needs_manual_review"
-    return DocumentRecognition(document_type, tax_year, status, tuple(events), tuple(warnings))
+    coverage_start = CandidateField(coverage_start_value, "high", "取自 Statement Period 起始日期") if coverage_start_value else None
+    coverage_end = CandidateField(coverage_end_value, "high", "取自 Statement Period 截止日期") if coverage_end_value else None
+    return DocumentRecognition(
+        document_type,
+        tax_year,
+        status,
+        tuple(events),
+        tuple(warnings),
+        coverage_start,
+        coverage_end,
+    )

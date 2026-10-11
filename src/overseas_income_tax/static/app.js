@@ -1,4 +1,7 @@
-const state = { documents: [], auditReviews: {}, lastPayload: null, lastResult: null, nextEvent: 1 };
+const state = {
+  documents: [], auditReviews: {}, lastPayload: null, lastResult: null,
+  nextEvent: 1, coverageGaps: [],
+};
 const $ = (selector) => document.querySelector(selector);
 const checked = (selector) => $(selector).checked;
 
@@ -15,37 +18,45 @@ function makeInput(label, name, type = "text", value = "") {
 
 function addEvent(defaults = {}) {
   const id = defaults.id || `event-${state.nextEvent++}`;
-  const card = document.createElement("article");
+  const card = document.createElement("details");
   card.className = "event-card";
+  card.open = !defaults.candidate;
   if (defaults.candidate) card.classList.add("candidate");
   card.dataset.id = id;
-  card.dataset.revision = String(defaults.revision || 0);
+  card.dataset.formRevision = String(defaults.revision || 0);
+  card.dataset.editRevision = "0";
   card.dataset.rejected = "false";
   card.dataset.excerpt = defaults.excerpt || "";
   card.dataset.amendmentKey = defaults.amendmentKey || "";
   card._extractedFields = defaults.extractedFields || {};
   card.innerHTML = `
-    <div class="event-top"><strong>${id}${defaults.candidate ? '<span class="candidate-badge">待确认候选值</span>' : ''}</strong><button type="button" class="secondary remove-event">删除</button></div>
-    <div class="event-grid">
-      <label>所得类别<select name="category"><option value="interest">利息</option><option value="dividend">普通现金股息</option><option value="capital_gain">资本利得（只整理）</option><option value="complex_product">复杂理财（只整理）</option><option value="other">其他（只整理）</option></select></label>
-      <label>来源国家或地区<input name="country" placeholder="例如：美国"></label>
-      <label>收入日期<input name="date" type="date"></label>
-      <label>币种<input name="currency" value="USD" maxlength="3"></label>
-      <label>税前收入<input name="gross" type="number" step="0.01" min="0"></label>
-      <label>报表显示扣税<input name="reported-tax" type="number" step="0.01" min="0"></label>
-      <label>符合条件的已缴税<input name="eligible-tax" type="number" step="0.01" min="0"></label>
-      <label>税款币种<input name="tax-currency" value="USD" maxlength="3"></label>
-      <label>证据页码<input name="page" type="number" min="1" value="1"></label>
-      <label class="wide-field">证据文件<select name="document"><option value="manual">手工录入（需后续补证据）</option></select></label>
-      <label class="wide-field">证据位置/原文摘要<input name="locator" placeholder="例如：第2页 Box 2；不要填写完整账号"></label>
-      <label class="wide-field">确认或修改原因<input name="reason" value="${defaults.candidate ? '规则自动预填，待人工核对' : ''}"></label>
-    </div>
-    <div class="confirmation">
-      <label class="check"><input name="confirmed" type="checkbox"> 事实已确认</label>
-      <label class="check"><input name="source-confirmed" type="checkbox"> 来源地已确认</label>
-      <label class="check"><input name="nature-confirmed" type="checkbox"> 所得性质已确认</label>
-      <label class="check"><input name="tax-confirmed" type="checkbox"> 可抵免境外税款已确认</label>
-      <label class="check"><input name="summary-row" type="checkbox"> 汇总凭证，不重复计税</label>
+    <summary class="event-summary">
+      <span class="event-summary-main"><strong class="event-summary-title">${id}</strong>${defaults.candidate ? '<span class="candidate-badge">待确认</span>' : ''}</span>
+      <span class="event-summary-state">待填写</span>
+    </summary>
+    <div class="event-body">
+      <div class="event-top"><span class="muted">展开核对字段</span><button type="button" class="secondary remove-event">删除</button></div>
+      <div class="event-grid">
+        <label>所得类别<select name="category"><option value="interest">利息</option><option value="dividend">普通现金股息</option><option value="capital_gain">资本利得（只整理）</option><option value="complex_product">复杂理财（只整理）</option><option value="other">其他（只整理）</option></select></label>
+        <label>来源国家或地区<input name="country" placeholder="例如：美国"></label>
+        <label>收入日期<input name="date" type="date"></label>
+        <label>币种<input name="currency" value="USD" maxlength="3"></label>
+        <label>税前收入<input name="gross" type="number" step="0.01" min="0"></label>
+        <label>报表显示扣税<input name="reported-tax" type="number" step="0.01" min="0"></label>
+        <label>符合条件的已缴税<input name="eligible-tax" type="number" step="0.01" min="0"></label>
+        <label>税款币种<input name="tax-currency" value="USD" maxlength="3"></label>
+        <label>证据页码<input name="page" type="number" min="1" value="1"></label>
+        <label class="wide-field">证据文件<select name="document"><option value="manual">手工录入（需后续补证据）</option></select></label>
+        <label class="wide-field">证据位置/原文摘要<input name="locator" placeholder="例如：第2页 Box 2；不要填写完整账号"></label>
+        <label class="wide-field">确认或修改原因<input name="reason" value="${defaults.candidate ? '规则自动预填，待人工核对' : ''}"></label>
+      </div>
+      <div class="confirmation">
+        <label class="check"><input name="confirmed" type="checkbox"> 事实已确认</label>
+        <label class="check"><input name="source-confirmed" type="checkbox"> 来源地已确认</label>
+        <label class="check"><input name="nature-confirmed" type="checkbox"> 所得性质已确认</label>
+        <label class="check"><input name="tax-confirmed" type="checkbox"> 可抵免境外税款已确认</label>
+        <label class="check"><input name="summary-row" type="checkbox"> 汇总凭证，不重复计税</label>
+      </div>
     </div>`;
   card.querySelector('[name="category"]').value = defaults.category || "interest";
   card.querySelector('[name="country"]').value = defaults.country || "";
@@ -82,24 +93,68 @@ function addEvent(defaults = {}) {
       card.querySelector('.remove-event').textContent = '恢复';
     }
     delete state.auditReviews[id];
-    card.dataset.revision = String(Number(card.dataset.revision) + 1);
+    card.dataset.editRevision = String(Number(card.dataset.editRevision) + 1);
+    refreshEventSummary(card);
     markStale();
   });
-  card.addEventListener('change', () => {
+  card.addEventListener('change', event => {
     delete state.auditReviews[id];
-    card.dataset.revision = String(Number(card.dataset.revision) + 1);
+    card.dataset.editRevision = String(Number(card.dataset.editRevision) + 1);
+    const label = event.target.closest('label');
+    if (label?.classList.contains('needs-review') && event.target.value !== '') {
+      label.classList.remove('needs-review');
+      label.classList.add('reviewed-field');
+    }
     if (card.classList.contains('candidate')) {
       const reason = card.querySelector('[name="reason"]');
       if (!reason.value || reason.value === '规则自动预填，待人工核对') reason.value = '已人工核对或修改自动预填值';
       updateCandidateState(card);
     }
+    organizeEventCard(card);
+    prioritizeReviewFields(card);
+    refreshEventSummary(card);
     markStale();
   });
-  $('#events').append(card);
+  organizeEventCard(card);
   refreshDocumentOptions();
   if (defaults.document) card.querySelector('[name="document"]').value = defaults.document;
   applyFieldMetadata(card, defaults.fieldMeta || {});
+  prioritizeReviewFields(card);
+  refreshEventSummary(card);
   markStale();
+}
+
+const CATEGORY_LABELS = {
+  interest: '利息', dividend: '普通现金股息', capital_gain: '资本利得',
+  complex_product: '复杂理财', other: '其他',
+};
+
+function organizeEventCard(card) {
+  const isOther = !['interest', 'dividend'].includes(card.querySelector('[name="category"]').value);
+  const target = isOther ? $('#other-events') : $('#supported-events');
+  if (card.parentElement !== target) target.append(card);
+  $('#other-group').classList.toggle('hidden', !$('#other-events').children.length);
+}
+
+function prioritizeReviewFields(card) {
+  const grid = card.querySelector('.event-grid');
+  const needsReview = [...grid.querySelectorAll(':scope > label.needs-review')];
+  if (needsReview.length) grid.prepend(...needsReview);
+}
+
+function refreshEventSummary(card) {
+  const category = card.querySelector('[name="category"]').value;
+  const date = card.querySelector('[name="date"]').value || '日期待补';
+  const amount = card.querySelector('[name="gross"]').value || '金额待补';
+  const currency = card.querySelector('[name="currency"]').value || '币种待补';
+  card.querySelector('.event-summary-title').textContent = `${CATEGORY_LABELS[category] || category} · ${date} · ${amount} ${currency}`;
+  const orangeCount = card.querySelectorAll('.event-grid label.needs-review').length;
+  const stateLabel = card.querySelector('.event-summary-state');
+  if (card.dataset.rejected === 'true') stateLabel.textContent = '已删除';
+  else if (!['interest', 'dividend'].includes(category)) stateLabel.textContent = '需人工判断';
+  else if (orangeCount) stateLabel.textContent = `待核对 ${orangeCount} 项`;
+  else if (card.querySelector('[name="confirmed"]').checked) stateLabel.textContent = '已确认';
+  else stateLabel.textContent = '可一键确认';
 }
 
 function applyFieldMetadata(card, metadata) {
@@ -130,17 +185,39 @@ function updateCandidateState(card) {
     const badge = card.querySelector('.candidate-badge');
     if (badge) badge.textContent = '已人工确认';
   }
+  refreshEventSummary(card);
 }
 
 function confirmReadyCandidates() {
   document.querySelectorAll('.event-card:not(.rejected)').forEach(card => {
+    if (!['interest', 'dividend'].includes(card.querySelector('[name="category"]').value)) return;
     const required = ['country', 'currency', 'gross', 'reported-tax', 'eligible-tax', 'tax-currency'];
     if (!required.every(name => card.querySelector(`[name="${name}"]`).value.trim() !== '')) return;
+    const unresolvedRequired = required.some(name => card.querySelector(`[name="${name}"]`).closest('label').classList.contains('needs-review'));
+    if (unresolvedRequired || card.querySelector('[name="category"]').closest('label').classList.contains('needs-review')) return;
     ['confirmed', 'source-confirmed', 'nature-confirmed', 'tax-confirmed'].forEach(name => {
       card.querySelector(`[name="${name}"]`).checked = true;
     });
     card.querySelector('[name="reason"]').value = '批量核对材料后确认自动预填值';
     updateCandidateState(card);
+  });
+  markStale();
+}
+
+function confirmSuggestedFacts() {
+  const accepted = window.confirm('请先确认报表中的所得类别线索和建议来源地与实际付款或发行主体一致。是否批量确认当前已预填的类别和来源地？');
+  if (!accepted) return;
+  document.querySelectorAll('.event-card:not(.rejected)').forEach(card => {
+    const category = card.querySelector('[name="category"]');
+    const country = card.querySelector('[name="country"]');
+    if (!['interest', 'dividend'].includes(category.value) || !country.value.trim()) return;
+    category.closest('label').classList.remove('needs-review');
+    country.closest('label').classList.remove('needs-review');
+    card.querySelector('[name="nature-confirmed"]').checked = true;
+    card.querySelector('[name="source-confirmed"]').checked = true;
+    card.querySelector('[name="reason"]').value = '用户批量确认建议所得类别和来源地';
+    prioritizeReviewFields(card);
+    refreshEventSummary(card);
   });
   markStale();
 }
@@ -152,11 +229,15 @@ function adoptReportedTax() {
     const category = card.querySelector('[name="category"]').value;
     const reported = card.querySelector('[name="reported-tax"]').value;
     const eligible = card.querySelector('[name="eligible-tax"]');
-    if (!['interest', 'dividend'].includes(category) || reported === '' || eligible.value !== '') return;
-    eligible.value = reported;
+    if (!['interest', 'dividend'].includes(category) || reported === '') return;
+    if (eligible.value === '') eligible.value = reported;
+    card.querySelector('[name="reported-tax"]').closest('label').classList.remove('needs-review');
+    eligible.closest('label').classList.remove('needs-review');
     card.querySelector('[name="tax-confirmed"]').checked = true;
     card.querySelector('[name="reason"]').value = '用户批量确认采用已匹配的报表扣税';
     updateCandidateState(card);
+    prioritizeReviewFields(card);
+    refreshEventSummary(card);
   });
   markStale();
 }
@@ -167,7 +248,9 @@ function markFormSummaries() {
   document.querySelectorAll('.event-card:not(.rejected)').forEach(card => {
     if (card._extractedFields?.aggregation_level !== 'form_summary') return;
     card.querySelector('[name="summary-row"]').checked = true;
+    card.querySelector('[name="summary-row"]').closest('label').classList.remove('needs-review');
     card.querySelector('[name="reason"]').value = '用户确认该表单只作汇总勾稽凭证';
+    refreshEventSummary(card);
   });
   markStale();
 }
@@ -228,8 +311,34 @@ function refreshDocumentOptions() {
   });
 }
 
-async function extractPdfs() {
-  const files = [...$('#pdf-file').files];
+function updateCoverageWarning() {
+  const taxYear = Number($('#tax-year').value);
+  const months = new Set(
+    state.documents
+      .filter(doc => doc.recognition?.document_type?.value === 'bank_savings_statement')
+      .map(doc => doc.recognition?.coverage_end?.value)
+      .filter(Boolean)
+      .filter(value => Number(value.slice(0, 4)) === taxYear)
+      .map(value => Number(value.slice(5, 7)))
+  );
+  const warning = $('#coverage-warning');
+  if (!months.size) {
+    state.coverageGaps = [];
+    warning.classList.add('hidden');
+    warning.textContent = '';
+    return;
+  }
+  state.coverageGaps = Array.from({ length: 12 }, (_, index) => index + 1).filter(month => !months.has(month));
+  warning.classList.remove('hidden');
+  warning.classList.toggle('complete', !state.coverageGaps.length);
+  warning.textContent = state.coverageGaps.length
+    ? `月结单可能缺少：${state.coverageGaps.map(month => `${month} 月`).join('、')}。请补充后再判断全年是否完整。`
+    : `${taxYear} 年 1—12 月月结单已覆盖。`;
+}
+
+async function extractPdfs(fileOverride = null) {
+  const files = fileOverride || [...$('#pdf-file').files, ...$('#pdf-folder').files]
+    .filter(file => file.name.toLowerCase().endsWith('.pdf'));
   if (!files.length) return showError('请选择至少一个 PDF 文件。');
   const existingHashes = new Set(state.documents.filter(item => item.sha256).map(item => item.sha256));
   const placeholders = files.map((file, index) => ({
@@ -243,6 +352,8 @@ async function extractPdfs() {
   renderDocuments();
   $('#upload-status').textContent = `正在识别 ${files.length} 个文件…`;
   $('#extract-button').disabled = true;
+  let completed = 0;
+  let recognizedEvents = 0;
 
   await Promise.all(files.map(async (file, index) => {
     const entry = placeholders[index];
@@ -264,10 +375,13 @@ async function extractPdfs() {
       existingHashes.add(body.sha256);
       if (body.recognition.tax_year?.value) $('#tax-year').value = body.recognition.tax_year.value;
       body.recognition.events.forEach(candidate => addCandidateEvent(candidate, body));
+      recognizedEvents += body.recognition.events.length;
     } catch (error) {
       entry.status = 'failed';
       entry.error = error.message;
     } finally {
+      completed += 1;
+      $('#upload-status').textContent = `已处理 ${completed}/${files.length} 个文件 · 已识别 ${recognizedEvents} 笔候选事项`;
       renderDocuments();
       refreshDocumentOptions();
     }
@@ -279,7 +393,10 @@ async function extractPdfs() {
   $('#upload-status').textContent = `处理完成：${recognized} 个已生成候选值，${review} 个需人工核对，${failed} 个失败。`;
   $('#extract-button').disabled = false;
   $('#pdf-file').value = '';
+  $('#pdf-folder').value = '';
+  updateCoverageWarning();
   await loadReferenceRates();
+  $('#review-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function addCandidateEvent(candidate, documentInfo) {
@@ -324,6 +441,8 @@ function renderDocuments() {
   state.documents.forEach(doc => {
     const box = document.createElement('details');
     box.className = 'document';
+    box.dataset.fileName = doc.file_name;
+    box.dataset.sha256 = doc.sha256 || '';
     const summary = document.createElement('summary');
     const [statusText, statusClass] = recognitionLabel(doc.status);
     const head = document.createElement('span');
@@ -344,7 +463,9 @@ function renderDocuments() {
     if (doc.recognition) {
       const type = document.createElement('p');
       type.className = 'muted';
-      type.textContent = `材料类型：${doc.recognition.document_type.value} · 税年：${doc.recognition.tax_year.value || '未识别'}`;
+      const coverage = doc.recognition.coverage_start?.value && doc.recognition.coverage_end?.value
+        ? ` · 覆盖：${doc.recognition.coverage_start.value} 至 ${doc.recognition.coverage_end.value}` : '';
+      type.textContent = `材料类型：${doc.recognition.document_type.value} · 税年：${doc.recognition.tax_year.value || '未识别'}${coverage}`;
       box.append(type);
     }
     (doc.warnings || []).forEach(message => {
@@ -361,6 +482,7 @@ function renderDocuments() {
     }
     (doc.pages || []).forEach(page => {
       const details = document.createElement('details');
+      details.dataset.page = String(page.page);
       const pageSummary = document.createElement('summary');
       pageSummary.textContent = `第 ${page.page} 页文本`;
       const pre = document.createElement('pre');
@@ -409,7 +531,7 @@ function buildPayload() {
       nature_confirmed: card.querySelector('[name="nature-confirmed"]').checked,
       foreign_tax_confirmed: card.querySelector('[name="tax-confirmed"]').checked,
       amendment_key: card.dataset.amendmentKey || null,
-      revision: Number(card.dataset.revision),
+      revision: Number(card.dataset.formRevision),
     });
   });
   const rates = [...document.querySelectorAll('.rate-row')]
@@ -479,6 +601,21 @@ function renderResult(result) {
   };
   status.className = `result-status ${map[result.status][1]}`;
   status.textContent = map[result.status][0];
+  const blockingCount = result.pending_items.filter(item => item.blocking).length;
+  const materialCodes = new Set(['missing_evidence', 'exchange_rate_unresolved', 'no_events']);
+  const materialGapCount = state.coverageGaps.length + result.pending_items.filter(item => materialCodes.has(item.code)).length;
+  const outcomes = document.createElement('div');
+  outcomes.className = 'outcome-metrics';
+  [
+    ['范围内预计补缴', cny(result.range_supplemental_tax_cny)],
+    ['待核验', `${blockingCount} 项`],
+    ['材料缺口', `${materialGapCount} 项`],
+  ].forEach(([label, value]) => {
+    const item = document.createElement('div'); item.className = 'outcome-metric';
+    const small = document.createElement('span'); small.textContent = label;
+    const strong = document.createElement('strong'); strong.textContent = value;
+    item.append(small, strong); outcomes.append(item);
+  });
   const metrics = document.createElement('div');
   metrics.className = 'metrics';
   [['范围内应纳税所得额', result.taxable_income_cny], ['范围内应纳税额', result.tax_before_credit_cny], ['采用抵免额', result.credit_used_cny], ['范围内预计补税', result.range_supplemental_tax_cny]].forEach(([label, value]) => {
@@ -491,16 +628,60 @@ function renderResult(result) {
   const note = document.createElement('p');
   note.className = 'muted';
   note.textContent = `规则快照 ${result.rule_snapshot_version} · 计算指纹 ${result.fingerprint.slice(0, 12)}…`;
-  box.append(heading, status, metrics, note);
+  box.append(heading, status, outcomes, metrics, note);
   if (result.pending_items.length) {
     const sub = document.createElement('h3'); sub.textContent = '待核验清单';
     const list = document.createElement('ul'); list.className = 'pending-list';
-    result.pending_items.forEach(item => { const li = document.createElement('li'); li.textContent = `${item.blocking ? '阻断' : '提示'} · ${item.event_id ? `${item.event_id} · ` : ''}${item.message}`; list.append(li); });
+    result.pending_items.forEach(item => {
+      const li = document.createElement('li');
+      const message = document.createElement('span');
+      message.textContent = `${item.blocking ? '阻断' : '提示'} · ${item.event_id ? `${item.event_id} · ` : ''}${item.message}`;
+      const fix = document.createElement('button'); fix.type = 'button'; fix.className = 'text-button'; fix.textContent = '去修改';
+      fix.addEventListener('click', () => focusPendingItem(item));
+      li.append(message, fix); list.append(li);
+    });
     box.append(sub, list);
   }
+  appendOtherItems(box);
   appendDerivations(box, result);
   appendRandomAudit(box, result);
   box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function focusPendingItem(item) {
+  if (item.event_id) {
+    const card = [...document.querySelectorAll('.event-card')].find(candidate => candidate.dataset.id === item.event_id);
+    if (card) {
+      card.open = true;
+      card.classList.add('focus-pulse');
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => card.classList.remove('focus-pulse'), 1800);
+      return;
+    }
+  }
+  if (item.code === 'exchange_rate_unresolved') return $('#rates').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (['country_coverage_unknown', 'prior_credit_unresolved', 'refund_correction_unresolved'].includes(item.code)) {
+    const advanced = document.querySelector('.advanced-questionnaire');
+    advanced.open = true;
+    advanced.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  $('#review-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function appendOtherItems(box) {
+  const cards = [...document.querySelectorAll('.event-card:not(.rejected)')]
+    .filter(card => !['interest', 'dividend'].includes(card.querySelector('[name="category"]').value));
+  if (!cards.length) return;
+  const section = document.createElement('section'); section.className = 'other-result';
+  const heading = document.createElement('h3'); heading.textContent = `需人工判断 / 未计入自动计税（${cards.length} 笔）`;
+  const list = document.createElement('ul');
+  cards.forEach(card => {
+    const item = document.createElement('li');
+    item.textContent = card.querySelector('.event-summary-title').textContent;
+    list.append(item);
+  });
+  section.append(heading, list); box.append(section);
 }
 
 function appendDerivations(box, result) {
@@ -550,15 +731,45 @@ function appendDerivations(box, result) {
   box.append(section);
 }
 
-function randomSample(items, limit) {
-  const copy = [...items];
-  for (let index = copy.length - 1; index > 0; index -= 1) {
-    const random = new Uint32Array(1);
-    crypto.getRandomValues(random);
-    const target = random[0] % (index + 1);
-    [copy[index], copy[target]] = [copy[target], copy[index]];
+function stableAuditSample(items, fingerprint, limit) {
+  const score = text => [...text].reduce((value, character) => ((value * 33) ^ character.charCodeAt(0)) >>> 0, 5381);
+  return [...items]
+    .sort((left, right) => score(`${fingerprint}:${left.event_id}`) - score(`${fingerprint}:${right.event_id}`))
+    .slice(0, Math.min(limit, items.length));
+}
+
+function highlightEvidence(item) {
+  state.documents.forEach((doc, index) => {
+    const box = [...document.querySelectorAll('.document')].find(candidate => candidate.dataset.fileName === doc.file_name);
+    if (!box) return;
+    (doc.pages || []).forEach(page => {
+      const details = [...box.querySelectorAll('details[data-page]')].find(candidate => Number(candidate.dataset.page) === page.page);
+      if (details) details.querySelector('pre').textContent = page.text;
+    });
+  });
+  const box = [...document.querySelectorAll('.document')].find(candidate => candidate.dataset.fileName === item.file_name);
+  const pageDetails = box && [...box.querySelectorAll('details[data-page]')].find(candidate => Number(candidate.dataset.page) === item.page);
+  if (!box || !pageDetails) return;
+  box.open = true;
+  pageDetails.open = true;
+  const pre = pageDetails.querySelector('pre');
+  const raw = pre.textContent;
+  const tokens = (item.excerpt || '').trim().split(/\s+/).slice(0, 16).filter(Boolean);
+  let found = null;
+  if (tokens.length) {
+    const escaped = tokens.map(token => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    found = raw.match(new RegExp(escaped.join('\\s+'), 'i'));
   }
-  return copy.slice(0, Math.min(limit, copy.length));
+  if (found) {
+    const index = found.index;
+    const mark = document.createElement('mark'); mark.className = 'evidence-highlight'; mark.textContent = found[0];
+    pre.replaceChildren(document.createTextNode(raw.slice(0, index)), mark, document.createTextNode(raw.slice(index + found[0].length)));
+    mark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  } else {
+    pageDetails.classList.add('focus-pulse');
+    pageDetails.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setTimeout(() => pageDetails.classList.remove('focus-pulse'), 1800);
+  }
 }
 
 function appendRandomAudit(box, result) {
@@ -568,21 +779,36 @@ function appendRandomAudit(box, result) {
   const heading = document.createElement('h3'); heading.textContent = '随机抽检原件';
   const intro = document.createElement('p');
   intro.textContent = '请随机核对以下事项。标记不一致后，该事项会退回待确认并使当前结果失效。';
-  audit.append(heading, intro);
-  randomSample(result.event_derivations, 3).forEach(item => {
+  const sample = stableAuditSample(result.event_derivations, result.fingerprint, 3);
+  const progress = document.createElement('p'); progress.className = 'audit-progress';
+  const updateProgress = () => {
+    const completed = sample.filter(item => state.auditReviews[item.event_id]).length;
+    progress.textContent = `抽检进度：${completed}/${sample.length}`;
+  };
+  updateProgress();
+  audit.append(heading, intro, progress);
+  sample.forEach(item => {
     const row = document.createElement('div'); row.className = 'audit-item';
     const description = document.createElement('div');
     description.textContent = `${item.event_id} · ${item.file_name} 第 ${item.page} 页 · ${item.formula}`;
+    const recorded = state.auditReviews[item.event_id];
+    const reviewState = document.createElement('span'); reviewState.className = 'audit-state';
+    reviewState.textContent = recorded ? (recorded.status === 'consistent' ? '已核对一致' : '已标记不一致') : '待抽检';
+    description.append(' · ', reviewState);
     const actions = document.createElement('div'); actions.className = 'audit-actions';
+    const locate = document.createElement('button'); locate.type = 'button'; locate.className = 'secondary'; locate.textContent = '定位原文';
+    locate.addEventListener('click', () => highlightEvidence(item));
     const consistent = document.createElement('button'); consistent.type = 'button'; consistent.className = 'secondary'; consistent.textContent = '与原件一致';
     const inconsistent = document.createElement('button'); inconsistent.type = 'button'; inconsistent.className = 'secondary'; inconsistent.textContent = '不一致';
+    if (recorded) { consistent.disabled = true; inconsistent.disabled = true; }
     consistent.addEventListener('click', () => {
       state.auditReviews[item.event_id] = { event_id: item.event_id, status: 'consistent', note: '' };
       if (state.lastPayload) state.lastPayload.audit_reviews = Object.values(state.auditReviews);
-      description.textContent += ' · 已记录一致';
+      reviewState.textContent = '已核对一致';
       consistent.disabled = true; inconsistent.disabled = true;
+      updateProgress();
     });
-    inconsistent.addEventListener('click', () => {
+    inconsistent.addEventListener('click', async () => {
       const note = window.prompt('请说明不一致之处：');
       if (!note || !note.trim()) return;
       state.auditReviews[item.event_id] = { event_id: item.event_id, status: 'inconsistent', note: note.trim() };
@@ -590,12 +816,15 @@ function appendRandomAudit(box, result) {
       if (card) {
         card.querySelector('[name="confirmed"]').checked = false;
         card.querySelector('[name="reason"]').value = `随机抽检不一致：${note.trim()}`;
-        card.dataset.revision = String(Number(card.dataset.revision) + 1);
+        card.dataset.editRevision = String(Number(card.dataset.editRevision) + 1);
         card.classList.add('candidate');
+        card.open = true;
+        refreshEventSummary(card);
       }
       markStale();
+      await calculate();
     });
-    actions.append(consistent, inconsistent); row.append(description, actions); audit.append(row);
+    actions.append(locate, consistent, inconsistent); row.append(description, actions); audit.append(row);
   });
   box.append(audit);
 }
@@ -604,7 +833,15 @@ function showError(message) {
   const box = $('#result');
   box.classList.remove('hidden');
   box.replaceChildren();
-  const p = document.createElement('p'); p.className = 'error'; p.textContent = message; box.append(p);
+  const p = document.createElement('p'); p.className = 'error'; p.textContent = message;
+  const fix = document.createElement('button'); fix.type = 'button'; fix.className = 'text-button'; fix.textContent = '去处理';
+  fix.addEventListener('click', () => {
+    const target = message.includes('同意') ? $('#consent-panel')
+      : message.includes('PDF') ? $('#drop-zone')
+        : message.includes('汇率') ? $('#rates') : $('#review-panel');
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  box.append(p, fix);
 }
 
 function markStale() {
@@ -630,10 +867,11 @@ async function exportXlsx() {
 
 $('#add-event').addEventListener('click', () => addEvent());
 $('#confirm-ready').addEventListener('click', confirmReadyCandidates);
+$('#confirm-suggested-facts').addEventListener('click', confirmSuggestedFacts);
 $('#adopt-reported-tax').addEventListener('click', adoptReportedTax);
 $('#mark-form-summaries').addEventListener('click', markFormSummaries);
 $('#add-rate').addEventListener('click', () => addRate(''));
-$('#extract-button').addEventListener('click', extractPdfs);
+$('#extract-button').addEventListener('click', () => extractPdfs());
 $('#calculate-button').addEventListener('click', calculate);
 $('#export-button').addEventListener('click', exportXlsx);
 const dropZone = $('#drop-zone');
@@ -645,14 +883,42 @@ const dropZone = $('#drop-zone');
   event.preventDefault();
   dropZone.classList.remove('dragging');
 }));
-dropZone.addEventListener('drop', event => {
-  const transfer = new DataTransfer();
-  [...event.dataTransfer.files].forEach(file => transfer.items.add(file));
-  $('#pdf-file').files = transfer.files;
-  extractPdfs();
+async function readDirectoryEntries(reader) {
+  const entries = [];
+  while (true) {
+    const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+    if (!batch.length) return entries;
+    entries.push(...batch);
+  }
+}
+
+async function filesFromEntry(entry) {
+  if (entry.isFile) return [await new Promise((resolve, reject) => entry.file(resolve, reject))];
+  if (!entry.isDirectory) return [];
+  const children = await readDirectoryEntries(entry.createReader());
+  const nested = await Promise.all(children.map(filesFromEntry));
+  return nested.flat();
+}
+
+async function filesFromDrop(dataTransfer) {
+  const entries = [...dataTransfer.items]
+    .map(item => item.webkitGetAsEntry?.())
+    .filter(Boolean);
+  if (!entries.length) return [...dataTransfer.files];
+  const nested = await Promise.all(entries.map(filesFromEntry));
+  return nested.flat();
+}
+
+dropZone.addEventListener('drop', async event => {
+  const files = (await filesFromDrop(event.dataTransfer))
+    .filter(file => file.name.toLowerCase().endsWith('.pdf'));
+  await extractPdfs(files);
 });
 document.querySelectorAll('input, select').forEach(input => input.addEventListener('change', markStale));
 addRate('USD');
 addRate('HKD');
-$('#tax-year').addEventListener('change', loadReferenceRates);
+$('#tax-year').addEventListener('change', () => {
+  loadReferenceRates();
+  updateCoverageWarning();
+});
 loadReferenceRates();

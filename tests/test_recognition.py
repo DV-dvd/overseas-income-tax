@@ -84,7 +84,7 @@ code
 def test_supported_bank_statement_extracts_interest_by_currency_section():
     result = recognize_document(document("""
 Statement Savings Account 儲蓄(結單)賬戶
-Statement Period 結 單 期
+Statement Period 結 單 期 : 05 JUN 2025 - 06 JUL 2025
 HKD 05JUN25 Balance B/F 1,000.00
 02JUL25 0000 INTEREST 利息收入 8.88 1,008.88
 USD 05JUN25 Balance B/F 2,000.00
@@ -94,6 +94,25 @@ USD 05JUN25 Balance B/F 2,000.00
     assert [event.currency.value for event in result.events] == ["HKD", "USD"]
     assert [event.gross_amount.value for event in result.events] == [Decimal("8.88"), Decimal("9.99")]
     assert result.tax_year.value == "2025"
+    assert result.coverage_start.value == "2025-06-05"
+    assert result.coverage_end.value == "2025-07-06"
+
+
+def test_time_deposit_uplift_extracts_interest_amount_and_excludes_prior_year_rows():
+    result = recognize_document(document("""
+Statement Savings Account 儲蓄(結單)賬戶
+Statement Period 結 單 期 : 05 DEC 2024 - 06 JAN 2025
+TIME DEPOSIT ACCOUNT 定期存款賬戶
+Uplift 提取
+11DEC24 123456 M01 11NOV24 11DEC24 USD 10,000.00 3.9000% 32.05 10,032.05
+Uplift 提取
+02JAN25 789012 M01 02DEC24 02JAN25 USD 20,000.00 3.5000% 59.45 20,059.45
+"""))
+    assert len(result.events) == 1
+    event = result.events[0]
+    assert event.extracted_fields["transaction_type"] == "time_deposit_maturity_interest"
+    assert event.gross_amount.value == Decimal("59.45")
+    assert event.occurred_on.value == "2025-01-02"
 
 
 def test_supported_activity_statement_extracts_detail_not_totals_or_debit_interest():
@@ -117,7 +136,7 @@ def test_supported_activity_statement_extracts_detail_not_totals_or_debit_intere
 def test_substitute_dividend_is_visible_and_keeps_result_out_of_scope():
     result = recognize_document(document("""
 活动报表
-2025-08-01 FUND(US0000000001) PAYMENT IN LIEU OF DIVIDEND USD 4.50
+2025-08-01 FUND(US0000000001) 现金红利 PAYMENT IN LIEU OF DIVIDEND USD 4.50
 """))
     assert len(result.events) == 1
     assert result.events[0].category.value == "other"

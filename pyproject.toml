@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "overseas-income-tax"
-version = "0.4.0"
+version = "0.5.0"
 description = "中国居民境外利息与普通现金股息的范围内税额测算工具"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -48,13 +48,17 @@
             </select>
           </label>
         </div>
-        <div class="checks-grid">
-          <label class="check"><input id="country-reviewed" type="checkbox"> 已核对同一国家（地区）的其他所得</label>
-          <label class="check"><input id="prior-reviewed" type="checkbox"> 已核对历史未抵免余额</label>
-          <label class="check"><input id="refund-reviewed" type="checkbox"> 已核对境外退税与更正</label>
-          <label class="check"><input id="has-prior" type="checkbox"> 存在历史未抵免余额</label>
-          <label class="check"><input id="has-refund" type="checkbox"> 存在境外退税或更正</label>
-        </div>
+        <details class="advanced-questionnaire">
+          <summary>高级：抵免完整性</summary>
+          <p class="muted">这些信息决定结果能否标成全年完整结论。不确定时可以不勾选，系统仍会输出范围内测算。</p>
+          <div class="checks-grid">
+            <label class="check"><input id="country-reviewed" type="checkbox"> 我已检查：同一国家（地区）没有遗漏其他境外收入</label>
+            <label class="check"><input id="prior-reviewed" type="checkbox"> 我已检查：以前年度没有尚未使用的境外税额抵免</label>
+            <label class="check"><input id="refund-reviewed" type="checkbox"> 我已检查：没有境外退税或更正</label>
+            <label class="check"><input id="has-prior" type="checkbox"> 确实存在以前年度未抵免余额，需要人工处理</label>
+            <label class="check"><input id="has-refund" type="checkbox"> 确实存在境外退税或更正，需要人工处理</label>
+          </div>
+        </details>
       </div>
     </section>
 
@@ -65,30 +69,38 @@
         <p class="muted">可一次选择多个 PDF。已支持 1042-S、储蓄账户月结单和券商活动报表；逐笔日期、币种、收入及匹配到的扣税会自动预填。</p>
         <div class="upload-row drop-zone" id="drop-zone">
           <input id="pdf-file" type="file" accept="application/pdf" multiple>
+          <label class="folder-picker">选择文件夹<input id="pdf-folder" type="file" accept="application/pdf" multiple webkitdirectory directory></label>
           <button id="extract-button" class="secondary">上传并自动识别</button>
         </div>
         <p class="muted">也可以把多个 PDF 直接拖到上面的上传区域。</p>
         <p id="upload-status" class="muted" aria-live="polite"></p>
+        <p id="coverage-warning" class="coverage-warning hidden" aria-live="polite"></p>
         <div id="documents" class="document-list"></div>
       </div>
     </section>
 
-    <section class="panel wide">
+    <section class="panel wide" id="review-panel">
       <div class="step-number">04</div>
       <div class="panel-body">
         <div class="section-head">
           <div>
             <h2>候选经济事项</h2>
-            <p class="muted">材料中的客观字段会自动预填。黄色字段需要重点核对；确认、修改或删除都要记录原因。</p>
+            <p class="muted">每笔默认折叠。橙色字段排在展开区最前；批量动作只处理你明确确认过的建议值。</p>
           </div>
           <div class="actions">
             <button id="adopt-reported-tax" class="secondary">采用已匹配扣税</button>
+            <button id="confirm-suggested-facts" class="secondary">确认建议类别和来源地</button>
             <button id="mark-form-summaries" class="secondary">1042-S 作为汇总凭证</button>
-            <button id="confirm-ready" class="secondary">确认全部已完整预填项</button>
+            <button id="confirm-ready" class="secondary">一键确认无橙色事项</button>
             <button id="add-event" class="secondary">＋ 添加事项</button>
           </div>
         </div>
-        <div id="events" class="events"></div>
+        <div id="supported-events" class="events"></div>
+        <section id="other-group" class="other-group hidden">
+          <h3>需人工判断 / 不计入自动计税</h3>
+          <p class="muted">常见来源包括替代股息、未覆盖的 1042-S 收入代码和其他尚未验证事项。</p>
+          <div id="other-events" class="events"></div>
+        </section>
       </div>
     </section>
 

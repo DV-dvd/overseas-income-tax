@@ -6,7 +6,7 @@ from typing import Any
 
 
 API_VERSION = "v1"
-CONTRACT_VERSION = "1.2.0"
+CONTRACT_VERSION = "1.3.0"
 
 
 def capabilities() -> dict[str, Any]:
@@ -41,6 +41,8 @@ def capabilities() -> dict[str, Any]:
         "recognition": {
             "mode": "rule_first",
             "supported_templates": ["irs_1042_s", "bank_savings_statement", "ibkr_activity_statement"],
+            "bank_statement_period_coverage": True,
+            "time_deposit_maturity_interest": True,
             "candidate_values_require_human_confirmation": True,
             "unsupported_templates": "materials_only",
         },
